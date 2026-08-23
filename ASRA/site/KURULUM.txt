@@ -1,0 +1,5 @@
+Güncel paket
+
+  /home/user/asra.apk              (1.5.3 — eskisini sil, bunu kur)
+  /home/user/asra-site/index.html  (sunucuya yükle)
+  /home/user/asra-site/auth.php    (sunucuya yükle)
