@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="asra_black">#FF000000</color>
+    <color name="asra_surface">#FF111111</color>
+    <color name="asra_text">#FFFFFFFF</color>
+    <color name="asra_muted">#FFB3B3B3</color>
+    <color name="asra_accent">#FFE8E8E8</color>
+    <color name="asra_progress">#CCFFFFFF</color>
+    <color name="asra_progress_track">#33FFFFFF</color>
+    <color name="ic_launcher_background">#FF000000</color>
+</resources>
