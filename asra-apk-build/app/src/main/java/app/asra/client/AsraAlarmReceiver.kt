@@ -18,7 +18,8 @@ class AsraAlarmReceiver : BroadcastReceiver() {
             try {
                 lock.acquire(25_000L)
                 AsraWatch.startEngine(context)
-                AsraInbox.poll(context)
+                // Push mimarisi: yedek alarm hostu YOKLAMAZ (yalnız ntfy.sh)
+                AsraInbox.poll(context, ntfyOnly = true)
             } catch (_: Exception) {
             } finally {
                 try {

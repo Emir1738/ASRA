@@ -51,6 +51,11 @@ class AsraBridge(
     }
 
     @JavascriptInterface
+    fun setNtfyChannel(active: Boolean) {
+        main.post { AsraWatch.pageNtfyChannel = active }
+    }
+
+    @JavascriptInterface
     fun openRoom(roomId: String) {
         val id = roomId.toIntOrNull() ?: return
         main.post { onOpenRoom(id) }

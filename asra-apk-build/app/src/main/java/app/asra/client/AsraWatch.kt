@@ -30,6 +30,15 @@ object AsraWatch {
     @Volatile
     var serviceAlive: Boolean = false
 
+    /**
+     * Sayfa (WebView) kendi ntfy kanalını çalıştırırken true.
+     * Arka plan motoru bu durumda görünürken ntfy sorgusunu durdurur;
+     * böylece aynı olay iki kere sorgulanmaz. Bildirim sistemi etkilenmez:
+     * arka planda (appVisible=false) motor tam çalışır.
+     */
+    @Volatile
+    var pageNtfyChannel: Boolean = false
+
     @Volatile
     private var lastScheduleAt = 0L
 

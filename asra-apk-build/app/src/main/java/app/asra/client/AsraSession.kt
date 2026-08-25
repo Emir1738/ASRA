@@ -32,6 +32,29 @@ object AsraSession {
         return dest
     }
 
+    /**
+     * Uygulama güncellemesi, WebView yükseltmesi veya depolama temizliği
+     * WebView çerez deposunu sildiğinde kullanıcı hesabından düşerdi: kayıtlı
+     * ASRA_SID / ASRA_REMEMBER çerezleri yalnızca arka plan hatlarında kullanılır,
+     * WebView'e geri enjekte edilmezdi. Bu fonksiyon kayıtlı çerezleri yeniden
+     * WebView'e yazar; sunucu hatırla-token ile oturumu sessizce geri yükler,
+     * davetiye kodu tekrar istenmez.
+     *
+     * Canlı çerez deposunda geçerli oturum varsa hiçbir şeye dokunulmaz.
+     */
+    fun restoreToWebView(context: Context) {
+        try {
+            val manager = CookieManager.getInstance()
+            val live = manager.getCookie(AsraIdentity.SITE_ORIGIN).orEmpty()
+            if (hasSession(live)) return
+            val saved = prefs(context).getString(KEY_COOKIE, "").orEmpty()
+            if (!hasSession(saved)) return
+            manager.setCookie(AsraIdentity.SITE_ORIGIN, saved)
+            manager.flush()
+        } catch (_: Exception) {
+        }
+    }
+
     fun persist(context: Context) {
         val store = prefs(context)
         val live = try {
@@ -58,7 +81,7 @@ object AsraSession {
 
     fun userAgent(context: Context): String {
         val saved = prefs(context).getString(KEY_UA, "").orEmpty()
-        return saved.ifBlank { "AsraApp/1.5.3" }
+        return saved.ifBlank { "AsraApp/1.5.7" }
     }
 
     fun cookie(context: Context): String {

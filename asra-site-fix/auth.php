@@ -47,14 +47,27 @@ const MESSAGE_RETENTION_HOURS = 24;
 const ONLINE_WINDOW_SECONDS = 120;
 const DEVICE_COOKIE_NAME = 'ASRA_DEVICE';
 const DEVICE_COOKIE_LIFETIME = 157680000;
-const INACTIVE_ACCOUNT_MONTHS = 5;
-const INACTIVE_ACCOUNT_REASON = 'Aktif olmadığın için hesabın silindi.';
+// Kayıtlı (davet kodu ile giren) kullanıcıların hesabı kolay kolay silinmesin:
+// inaktiflik penceresi 12 ay. 5 ay iken kullanıcılar kısa aralıklarla "kayıptı".
+const INACTIVE_ACCOUNT_MONTHS = 12;
+const INACTIVE_ACCOUNT_REASON = '12 ay boyunca aktif olmadığın için hesabın silindi.';
 const REMEMBER_COOKIE_NAME = 'ASRA_REMEMBER';
 const REMEMBER_LIFETIME = 15552000;
 const APP_DEVICE_HEADER = 'HTTP_X_ASRA_DEVICE_ID';
 const APP_DEVICE_COOKIE = 'ASRA_APP_DEVICE';
 const SESSION_ROTATION_INTERVAL = 1800;
 const SESSION_ROTATION_GRACE = 45;
+// Hit koruması: platformda HER ZAMAN aktiftir (kod/anahtar ile hiçbir ilişkisi yok).
+// Sunucu okuma bütçesi sürekli düşük tavana tutulur; ücretsiz host "hits"
+// kotası daima korunur. İstemci tarafı yoklama ritmi de kalıcı olarak yavaştır.
+const HIT_PROTECTION_MAX_REQUESTS = 60;
+const HIT_PROTECTION_COOLDOWN_SECONDS = 90;
+const HIT_PROTECTION_SESSION_MAX_REQUESTS = 50;
+// Açık erişim kodu — yetkili panel "Kod" bölümü:
+// AÇIKKEN bu kodu giren HERKES sınırsız (davet hakkı tüketmeden) katılabilir.
+// KAPATILINCA kod geçersiz olur; tekrar AÇILINCA otomatik YENİ kod üretilir.
+const OPEN_CODE_SETTING = 'open_code';
+const OPEN_CODE_ENABLED_SETTING = 'open_code_enabled';
 
 final class ApiError extends RuntimeException
 {
@@ -253,6 +266,9 @@ function ensureRuntimeSchema(PDO $pdo): void
     // kısa devresinden bağımsız kurulur. Aksi halde canlı şemada kolon
     // yoktur ve kimlik sorguları 500 üretir.
     ensureIdentityInfra($pdo);
+    // Platform ayarları (hit ekonomisi kodu) de v16 kısa devresinden
+    // bağımsız kurulur; yoksa ilk istekler tablo arar, 500 üretir.
+    ensurePlatformInfra($pdo);
     // Şema kontrolü her istekte veritabanına sorulmaz; kısa ömürlü yerel işaret
     // dosyası sayesinde sorgu maliyeti neredeyse sıfıra iner.
     $marker = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'asra_schema_v16.flag';
@@ -917,9 +933,51 @@ function ensureIdentityInfra(PDO $pdo): void
     $ready = true;
 }
 
+/**
+ * Platform ayarları tablosunu kurar.
+ *
+ * ÖNEMLİ: DDL (CREATE TABLE) yalnızca günde bir kez çalışır (marker dosyası).
+ * Ücretsiz hostlarda her istekte DDL, CPU kota aşımı ve hesap kilitlemeye
+ * yol açar; diğer altyapı fonksiyonlarındaki (ensurePushInfra vb.) marker
+ * deseniyle birebir aynı akış izlenir. Hiçbir adımda istek öldürmez.
+ */
+function ensurePlatformInfra(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $marker = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'asra_schema_platform_v1.flag';
+    if (is_file($marker) && (time() - (int) @filemtime($marker)) < 86400) {
+        $ready = true;
+        return;
+    }
+    safeSchemaExec(
+        $pdo,
+        "CREATE TABLE IF NOT EXISTS platform_settings (
+            setting_key VARCHAR(64) NOT NULL,
+            setting_value TEXT NULL,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (setting_key)
+        ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        'platform_settings'
+    );
+    @touch($marker);
+    $ready = true;
+}
+
 function validPushTopic(string $topic): bool
 {
     return (bool) preg_match('/\Aasra[a-z0-9_-]{8,40}\z/', $topic);
+}
+
+/**
+ * ntfy tablo adresi. Üretimde https://ntfy.sh; ortam değişkeniyle test
+ * ortamlarında yerel uca yönlendirilebilir (ASRA_NTFY_HOST).
+ */
+function ntfyBaseUrl(): string
+{
+    return rtrim(envValue('ASRA_NTFY_HOST', 'https://ntfy.sh'), '/');
 }
 
 function publishNtfy(string $topic, string $title, string $body): void
@@ -927,7 +985,7 @@ function publishNtfy(string $topic, string $title, string $body): void
     if (!validPushTopic($topic)) {
         return;
     }
-    $url = 'https://ntfy.sh/' . rawurlencode($topic);
+    $url = ntfyBaseUrl() . '/' . rawurlencode($topic);
     $safeTitle = str_replace(["\r", "\n"], '', $title);
     $headers = [
         'Title: ' . $safeTitle,
@@ -970,7 +1028,8 @@ function publishNtfy(string $topic, string $title, string $body): void
 
 function publishNtfyBatch(array $topics, string $title, string $body): void
 {
-    $topics = array_slice(array_values(array_unique(array_filter(array_map('strval', $topics), 'validPushTopic'))), 0, 12);
+    // Toplam 50 konuya kadar tek çoklu-istek dalgasında yayılır (topluluk büyüdükçe kayıp olmasın)
+    $topics = array_slice(array_values(array_unique(array_filter(array_map('strval', $topics), 'validPushTopic'))), 0, 50);
     if (!$topics) {
         return;
     }
@@ -986,7 +1045,7 @@ function publishNtfyBatch(array $topics, string $title, string $body): void
     $handles = [];
     $safeTitle = str_replace(["\r", "\n"], '', $title);
     foreach ($topics as $topic) {
-        $handle = curl_init('https://ntfy.sh/' . rawurlencode($topic));
+        $handle = curl_init(ntfyBaseUrl() . '/' . rawurlencode($topic));
         if ($handle === false) continue;
         curl_setopt_array($handle, [
             CURLOPT_POST => true,
@@ -1021,7 +1080,7 @@ function publishNtfyBatch(array $topics, string $title, string $body): void
     }
 }
 
-function notifyPushRecipients(PDO $pdo, int $senderId, int $roomId, string $roomName, string $preview): void
+function notifyPushRecipients(PDO $pdo, int $senderId, int $roomId, string $roomName, string $preview, array $extra = []): void
 {
     try {
         ensurePushInfra($pdo);
@@ -1039,24 +1098,66 @@ function notifyPushRecipients(PDO $pdo, int $senderId, int $roomId, string $room
              VALUES (?, ?, ?, ?, UTC_TIMESTAMP())'
         );
         $insert->execute([$roomId, $roomName, $senderId, $preview]);
-        $payload = json_encode([
+        $payloadData = [
             'rn' => $roomName,
             'rid' => $roomId,
             'sid' => $senderId,
             'tx' => $preview,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        ];
+        // $extra: istemcinin sunucuya istek ATMADAN yerel render edebilmesi
+        // icin mesaj detaylari (mid, u, t, full, img, sys). ntfy 4000 bayt
+        // limiti nedeniyle 'full' bayt-guvenli kirpmistir.
+        foreach ($extra as $key => $value) {
+            if (is_scalar($value)) {
+                $payloadData[(string) $key] = $value;
+            }
+        }
+        $payload = json_encode($payloadData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if (!is_string($payload) || $payload === '') {
             return;
         }
         $topics = $pdo->prepare(
             'SELECT topic FROM user_push_topics
              WHERE user_id <> ? AND updated_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 DAY)
-             LIMIT 12'
+             LIMIT 50'
         );
         $topics->execute([$senderId]);
         publishNtfyBatch($topics->fetchAll(PDO::FETCH_COLUMN) ?: [], $roomName, $payload);
     } catch (Throwable $error) {
         error_log('[push] notify skipped: ' . $error->getMessage());
+    }
+}
+
+/**
+ * Onay kararı (kabul/red) bildirimini ilgili KULLANICININ kendi ntfy
+ * konusuyla birebir iletir. APK güncellemesi gerektirmez: mevcut uygulama
+ * kendi konusu üzerindeki düz metin mesajları (JSON olmayan) başlık + gövde
+ * olarak doğrudan bildirim gösterir; gönderici kendi olmadığı için
+ * kendisini atlama kuralına takılmaz.
+ *
+ * Fail-safe: konu yoksa sessizce atlanır; hata asla onay kararını bozmaz.
+ * Gövde düz metindir (JSON değil) — böylece istemcide senderId 0 kalır.
+ */
+function notifyApprovalDecision(PDO $pdo, int $userId, string $decision): void
+{
+    if ($userId <= 0 || !in_array($decision, ['accept', 'reject'], true)) {
+        return;
+    }
+    try {
+        ensurePushInfra($pdo);
+        $stmt = $pdo->prepare('SELECT topic FROM user_push_topics WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1');
+        $stmt->execute([$userId]);
+        $topic = $stmt->fetchColumn();
+        if (!is_string($topic) || !validPushTopic($topic)) {
+            return; // uygulama push kaydetmemiş; zararsız atla
+        }
+        if ($decision === 'accept') {
+            publishNtfy($topic, 'Kabul Edildin', 'Başvurun kabul edildi, ASRA topluluğuna hoş geldin! Uygulamayı açarak sohbetmeye başlayabilirsin.');
+        } else {
+            publishNtfy($topic, 'Başvuru Reddedildi', 'Başvurun yönetici tarafından reddedildi. Yeni başvuru gönderebilmek için 5 gün beklemelisin.');
+        }
+    } catch (Throwable $error) {
+        error_log('[approval] push notify skipped: ' . $error->getMessage());
     }
 }
 
@@ -1346,7 +1447,7 @@ function respond(array $payload = [], int $status = 200): never
 
 function closeSessionEarlyForReads(string $action): void
 {
-    static $readActions = ['session','get_rooms','get_messages','get_message_views','get_user_profile','get_my_invite_code','admin_search_users','admin_pending_approvals','get_economy','get_quests','heartbeat','poll_push','get_banned_info','get_media','media'];
+    static $readActions = ['session','get_rooms','get_messages','get_message_views','get_user_profile','get_my_invite_code','admin_search_users','admin_pending_approvals','admin_access_code_status','get_economy','get_quests','heartbeat','poll_push','get_banned_info','get_media','media'];
     if (!in_array($action, $readActions, true)) return;
     if (session_status() === PHP_SESSION_ACTIVE) {
         try { session_write_close(); } catch (Throwable $e) {}
@@ -1495,21 +1596,26 @@ function findUserAccountBinding(PDO $pdo): ?array
     $identity = deviceIdentity();
     $appHash = $identity['app_hash'];
     try {
-        // DİREKT USERS: Ayrı tablo değil, users tablosundaki bind_* kolonları ile eşleşme
-        // Çok katı değil: token OR app_hash OR fingerprint'ten biri eşleşirse aynı cihaz sayılır
+        // DİREKT USERS: Ayrı tablo değil, users tablosundaki bind_* kolonları ile eşleşme.
+        // KÖK DÜZELTME: Eşleşme YALNIZCA benzersiz kimliklerle yapılır:
+        //   - bind_token_hash  (tarayıcı çerezi, profil başına benzersiz)
+        //   - bind_app_hash    (uygulama cihaz kimliği, kurulum başına benzersiz)
+        // Fingerprint (UA + dil başlıkları) EŞLEŞTİRMEDE KULLANILMAZ: aynı
+        // tarayıcı/model/dile sahip İKİ FARKLI KİŞİ aynı fingerprint'i üretir
+        // ve alakasız şekilde birbirinin hesabıyla eşleşirdi. Fingerprint yalnızca
+        // ban (blockUserIdentities) ve user_devices kaydı gibi güvenlik amaçlı
+        // kullanılmaya devam eder.
         $stmt = $pdo->prepare(
             'SELECT id AS user_id, username AS last_username, username AS active_username, 0 AS is_blocked
              FROM users
              WHERE bind_token_hash = ?
                 OR (? IS NOT NULL AND bind_app_hash = ?)
-                OR bind_fingerprint_hash = ?
              LIMIT 1'
         );
         $stmt->execute([
             $identity['token_hash'],
             $appHash,
             $appHash,
-            $identity['fingerprint_hash'],
         ]);
         return $stmt->fetch() ?: null;
     } catch (Throwable $error) {
@@ -1742,13 +1848,15 @@ function restoreSessionFromRemember(PDO $pdo): void
         $identity = deviceIdentity();
         $expired = strtotime((string) $token['expires_at'] . ' UTC') <= time();
         $versionChanged = (int) $token['session_version'] !== (int) $token['current_version'];
+        // KÖK DÜZELTME: Güven, YALNIZCA benzersiz kimliklere verilir
+        // (tarayıcı token'ı / uygulama cihaz kimliği). Fingerprint ortak
+        // UA-dil imzasıdır; farklı kişilerde çakışır ve asla güven
+        // kriteri olarak kullanılmaz.
         $tokenDeviceMatches = hash_equals((string) $token['device_token_hash'], $identity['token_hash']);
         $appMatches = is_string($identity['app_hash']) && $identity['app_hash'] !== ''
             && is_string($token['account_app_hash']) && $token['account_app_hash'] !== ''
             && hash_equals($token['account_app_hash'], $identity['app_hash']);
-        $fingerprintMatches = is_string($token['account_fingerprint_hash']) && $token['account_fingerprint_hash'] !== ''
-            && hash_equals($token['account_fingerprint_hash'], $identity['fingerprint_hash']);
-        $trustedDevice = $tokenDeviceMatches || $appMatches || $fingerprintMatches;
+        $trustedDevice = $tokenDeviceMatches || $appMatches;
         if ($expired || $versionChanged || !$trustedDevice) {
             $pdo->prepare('DELETE FROM auth_remember_tokens WHERE id = ?')->execute([$token['id']]);
             clearRememberCookie();
@@ -2012,6 +2120,98 @@ function consumeGlobalReadBudget(PDO $pdo, string $bucket, int $maxRequests, int
             'retry_after' => max(1, $windowStart + $windowSeconds - $now),
         ]);
     }
+}
+
+/**
+ * Açık erişim kodunu üretir: 4 grup x 4 karakter, karışık harf/rakam.
+ * 0/O, 1/I/L gibi birbirine karışan karakterler hariçtir. Her AÇILIŞTA
+ * yeniden üretilir (eski kodun sızması halinde otomatik geçersiz kalır).
+ */
+function generateOpenCode(): string
+{
+    $alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    $last = strlen($alphabet) - 1;
+    $group = static function () use ($alphabet, $last): string {
+        $part = '';
+        for ($i = 0; $i < 4; $i++) {
+            $part .= $alphabet[random_int(0, $last)];
+        }
+        return $part;
+    };
+    return $group() . '-' . $group() . '-' . $group() . '-' . $group();
+}
+
+/**
+ * Platform ayarları deposu. Tüm ayarlar istek başına bir kez, tek sorguyla
+ * önbelleğe alınır; aynı istek içindeki sonraki okumalar DB'sizdir.
+ * Okuma ve yazma ayrı API'lerdir: okuma asla yazmaz, yazma önbelleği taze
+ * tutar — böylece aynı istekte okuyan taraf yeni değeri görür.
+ */
+final class PlatformSettingsStore
+{
+    /** @var array<string,string>|null */
+    private static ?array $cache = null;
+
+    public static function get(PDO $pdo, string $key, string $default = ''): string
+    {
+        if (self::$cache === null) {
+            try {
+                $rows = [];
+                $stmt = $pdo->query('SELECT setting_key, setting_value FROM platform_settings');
+                foreach ($stmt->fetchAll() as $row) {
+                    $rows[(string) $row['setting_key']] = (string) ($row['setting_value'] ?? '');
+                }
+                self::$cache = $rows;
+            } catch (Throwable $error) {
+                // Önbellek tutma; bir sonraki çağrıda yeniden dene.
+                error_log('[platform] settings read skipped: ' . $error->getMessage());
+                return $default;
+            }
+        }
+        return (string) (self::$cache[$key] ?? $default);
+    }
+
+    public static function set(PDO $pdo, string $key, string $value): string
+    {
+        $pdo->prepare(
+            'INSERT INTO platform_settings (setting_key, setting_value) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+        )->execute([$key, $value]);
+        if (self::$cache === null) {
+            self::$cache = [];
+        }
+        self::$cache[$key] = $value;
+        return $value;
+    }
+}
+
+/** Salt okuyucu platform ayarı erişimi. */
+function platformSetting(PDO $pdo, string $key, string $default = ''): string
+{
+    return PlatformSettingsStore::get($pdo, $key, $default);
+}
+
+/** Kalıcı platform ayarı yazımı. */
+function setPlatformSetting(PDO $pdo, string $key, string $value): string
+{
+    return PlatformSettingsStore::set($pdo, $key, $value);
+}
+
+/**
+ * Açık erişim kodu durumu: aktif kod + anahtar durumu.
+ * Bozuk/eksik tablo istekleri asla boğmaz: okuma hatası "kapalı + kod yok"
+ * sayılır (fail-safe).
+ */
+function openCodeState(PDO $pdo): array
+{
+    try {
+        $code = platformSetting($pdo, OPEN_CODE_SETTING);
+        $enabled = platformSetting($pdo, OPEN_CODE_ENABLED_SETTING, '0') === '1';
+    } catch (Throwable $error) {
+        error_log('[platform] open code state read skipped: ' . $error->getMessage());
+        return ['code' => '', 'enabled' => false];
+    }
+    return ['code' => $code, 'enabled' => $enabled];
 }
 
 function textLength(string $value): int
@@ -2854,13 +3054,19 @@ function activeApprovalBlock(PDO $pdo, ?string $username = null): ?array
         if (shouldRunMaintenance($pdo, 'approval_blocks', 900)) {
             $pdo->exec('DELETE FROM approval_request_blocks WHERE blocked_until <= UTC_TIMESTAMP()');
         }
+        // KÖK DÜZELTME: Blok eşleşmesi YALNIZCA benzersiz kimliklerle yapılır:
+        //   - device_token_hash: reddedilen kişinin kendi tarayıcısı (spam koruması)
+        //   - username: aynı kullanıcı adı serinleme süresinde yeniden başvuru yapamaz
+        // Fingerprint (ortak UA-dil imzası) EŞLEŞTİRMEDE KULLANILMAZ; aynı
+        // tarayıcı/model/dile sahip alakasız diğer kişilerin başvurusunu 5 gün
+        // "Reddedildin" mesajıyla engelliyordu.
         $stmt = $pdo->prepare(
             'SELECT reason_type, message, blocked_until FROM approval_request_blocks
-             WHERE (device_token_hash = ? OR fingerprint_hash = ? OR username = ?)
+             WHERE (device_token_hash = ? OR username = ?)
                AND blocked_until > UTC_TIMESTAMP()
              ORDER BY created_at DESC LIMIT 1'
         );
-        $stmt->execute([$identity['token_hash'], $identity['fingerprint_hash'], $username ?? '']);
+        $stmt->execute([$identity['token_hash'], $username ?? '']);
         $block = $stmt->fetch();
         if (!$block) return null;
         return [
@@ -2942,6 +3148,9 @@ function actionSession(PDO $pdo): never
             $payload['authenticated'] = true;
             $payload['user'] = publicUser($user);
             $payload['admin_authenticated'] = (int) ($_SESSION['admin_authenticated_until'] ?? 0) > time();
+            // Hit koruması kalıcıdır: istemci (web) yoklama aralıklarını bu
+            // bayrağa göre kalıcı olarak yavaş ritimde tutar.
+            $payload['hit_economy'] = true;
             consumeApprovalDecisionNotice($pdo, $user);
         } catch (ApiError $error) {
             if ($error->errorCode === 'APPROVAL_PENDING') {
@@ -2971,6 +3180,15 @@ function actionCheckInvite(PDO $pdo, array $data): never
 
     $valid = hash_equals(PERMANENT_INVITE_CODE, $code);
     $inviteOwnerId = null;
+    if (!$valid) {
+        // Açık erişim kodu: AÇIKKEN bu kodla herkes sınırsız girer.
+        // Davet hakkı TÜKETİLMEZ (inviteOwner null kalır); kapatılınca bu
+        // yol kapanır ve kod işlemez.
+        $open = openCodeState($pdo);
+        if ($open['enabled'] && $open['code'] !== '' && hash_equals($open['code'], $code)) {
+            $valid = true;
+        }
+    }
     if (!$valid) {
         $stmt = $pdo->prepare('SELECT id, invite_code_consumed_at, invite_code_consumed_by FROM users WHERE invite_code = ? LIMIT 1');
         $stmt->execute([$code]);
@@ -3335,8 +3553,21 @@ function actionSendMessage(PDO $pdo, array $data): never
         throw $error;
     }
     $preview = $content !== '' ? $content : 'Yeni bir görsel gönderildi';
-    notifyPushRecipients($pdo, (int) $user['id'], $roomId, (string) $room['name'], $preview);
-    respond(['message' => 'Mesaj gönderildi.', 'message_id' => $messageId], 201);
+    // Yerel render paketi: istemci sunucuya istek atmadan mesajı ekrana basar
+    // (sıfır host isteği). ntfy 4000 bayt limiti için tam metin byte-güvenli
+    // kırpılır; bir sonraki gerçek istek resmi içerikle değiştirir.
+    $full = $content !== '' ? $content : '';
+    if (function_exists('mb_strcut') && function_exists('mb_strlen') && mb_strlen($full, 'UTF-8') > 2800) {
+        $full = (string) mb_strcut($full, 0, 3400, 'UTF-8');
+    }
+    notifyPushRecipients($pdo, (int) $user['id'], $roomId, (string) $room['name'], $preview, [
+        'mid' => $messageId,
+        'u' => (string) $user['username'],
+        't' => gmdate(DateTimeInterface::ATOM),
+        'full' => $full,
+        'img' => $imagePath,
+    ]);
+    respond(['message' => 'Mesaj gönderildi.', 'message_id' => $messageId, 'image_path' => $imagePath], 201);
 }
 
 function actionDeleteMessage(PDO $pdo, array $data): never
@@ -3833,7 +4064,7 @@ function actionAdminSendAnnouncement(PDO $pdo, array $data): never
     }
     foreach ($validRoomIds as $roomId) {
         $room = roomExists($pdo, $roomId);
-        notifyPushRecipients($pdo, (int) $admin['id'], $roomId, (string) $room['name'], 'DUYURU: ' . $message);
+        notifyPushRecipients($pdo, (int) $admin['id'], $roomId, (string) $room['name'], 'DUYURU: ' . $message, ['sys' => 1]);
     }
     respond([
         'message' => 'Duyuru seçilen odalara gönderildi.',
@@ -4757,6 +4988,54 @@ function actionAdminResetInviteCode(PDO $pdo, array $data): never
     respond(['message' => 'Kullanıcının davet kodu sıfırlandı.']);
 }
 
+/**
+ * Yetkili panel "Kod" bölümü — durum: aktif kod + anahtar durumu.
+ * Kod kapalıyken değeri hiç gösterilmez (geçersizdir zaten).
+ */
+function actionAdminAccessCodeStatus(PDO $pdo): never
+{
+    requireAdmin($pdo);
+    sessionRateGuard('admin_access_code', 30, 30);
+    closeSessionEarlyForReads('admin_access_code_status');
+    $state = openCodeState($pdo);
+    respond([
+        'code' => $state['enabled'] ? $state['code'] : '',
+        'enabled' => $state['enabled'],
+        'message' => $state['enabled']
+            ? 'Kod aktif: bu kodu giren herkes sınırsız şekilde katılabilir.'
+            : 'Kod kapalı: kodla giriş yapılamaz. Açtığınızda otomatik yeni kod üretilir.',
+    ]);
+}
+
+/**
+ * Yetkili panel "Kod" bölümü — aç/kapat anahtarı.
+ * AÇ: otomatik YENİ kod üretilir ve aktif olur (sınırsız erişim kodu).
+ * KAPAT: kod geçersiz olur ve kayıttan silinir; tekrar açılınca eski kod
+ * GEÇERSİZ kalır, taze kod üretilir.
+ */
+function actionAdminSetAccessCode(PDO $pdo, array $data): never
+{
+    $admin = requireAdmin($pdo);
+    consumeRequestLimit($pdo, rateKey('admin_set_access_code', (string) $admin['id']), 20, 3600);
+    $raw = $data['enabled'] ?? null;
+    $enabled = in_array($raw, [true, 1, '1', 'true', 'on', 'açık'], true);
+    if ($enabled) {
+        setPlatformSetting($pdo, OPEN_CODE_SETTING, generateOpenCode());
+        setPlatformSetting($pdo, OPEN_CODE_ENABLED_SETTING, '1');
+    } else {
+        setPlatformSetting($pdo, OPEN_CODE_ENABLED_SETTING, '0');
+        setPlatformSetting($pdo, OPEN_CODE_SETTING, '');
+    }
+    $state = openCodeState($pdo);
+    respond([
+        'message' => $enabled
+            ? 'Kod aktifleştirildi: yeni kod üretildi.'
+            : 'Kod kapatıldı: kodla giriş artık yapılamaz.',
+        'enabled' => $state['enabled'],
+        'code' => $state['enabled'] ? $state['code'] : '',
+    ]);
+}
+
 function createApprovedWelcomeMessage(PDO $pdo, string $username): void
 {
     $roomId = (int) $pdo->query("SELECT id FROM rooms WHERE name = 'Asra Genel' LIMIT 1")->fetchColumn();
@@ -4903,6 +5182,10 @@ function actionAdminDecideApproval(PDO $pdo, array $data): never
                 createApprovedWelcomeMessage($database, (string) $target['username']);
                 return ['already_decided' => false, 'username' => (string) $target['username']];
             });
+            if (!$result['already_decided']) {
+                // Kullanıcıya birebir push (ntfy konusu üzerinden); hata karar akışını bozmaz.
+                notifyApprovalDecision($pdo, $userId, 'accept');
+            }
             $response = [
                 'message' => $result['already_decided'] ? 'Başvuru daha önce kabul edilmiş.' : 'Başvuru kabul edildi.',
                 'already_decided' => (bool) $result['already_decided'],
@@ -4921,6 +5204,8 @@ function actionAdminDecideApproval(PDO $pdo, array $data): never
                 }
                 rememberApprovalBlockForUser($pdo, $userId, $target['username'], 'rejected', 'Reddedildin. Yeni başvuru göndermeden önce 5 gün beklemelisin.', 5);
                 deleteUserPermanently($pdo, $userId, 'Onay başvurusu yönetici tarafından reddedildi.', 'pending');
+                // Hesap silinse de push konusu kalır; kullanıcı karar bildirimini alır.
+                notifyApprovalDecision($pdo, $userId, 'reject');
                 $response = ['message' => 'Başvuru reddedildi ve hesap silindi.', 'already_decided' => false, 'user_id' => $userId];
             }
         }
@@ -5007,7 +5292,12 @@ function actionHeartbeat(PDO $pdo): never
     $fresh = currentUserFresh($pdo, (int) $user['id']);
     $public = publicUser($fresh);
     consumeApprovalDecisionNotice($pdo, $fresh);
-    respond(['server_time' => gmdate(DateTimeInterface::ATOM), 'user' => $public]);
+    respond([
+        'server_time' => gmdate(DateTimeInterface::ATOM),
+        'user' => $public,
+        // Web istemci heartbeat'te de bayrağı okur; yoklama ritimi kalıcıdır.
+        'hit_economy' => true,
+    ]);
 }
 
 function dispatch(): never
@@ -5018,7 +5308,7 @@ function dispatch(): never
     $postActions = [
         'check_invite_code', 'register', 'login', 'submit_approval', 'logout', 'send_message', 'register_push', 'delete_message', 'undo_delete_message', 'finalize_message_delete',
         'update_profile', 'update_profile_photo', 'delete_profile_photo', 'update_settings', 'admin_login', 'admin_ban_user', 'admin_unban_user',
-        'admin_delete_user', 'admin_change_user_password', 'admin_decide_approval', 'admin_adjust_coins', 'admin_reset_invite_code', 'admin_send_announcement', 'admin_delete_announcement', 'delete_own_account', 'ai_chat', 'buy_frame', 'equip_frame', 'claim_quest', 'claim_game_reward',
+        'admin_delete_user', 'admin_change_user_password', 'admin_decide_approval', 'admin_adjust_coins', 'admin_reset_invite_code', 'admin_set_access_code', 'admin_send_announcement', 'admin_delete_announcement', 'delete_own_account', 'ai_chat', 'buy_frame', 'equip_frame', 'claim_quest', 'claim_game_reward',
     ];
     $isPostAction = in_array($action, $postActions, true);
     requireMethod($isPostAction ? 'POST' : 'GET');
@@ -5031,22 +5321,22 @@ function dispatch(): never
         // kullanıcı sessizce geri yüklenir; kimse hesabından düşmez.
         restoreSessionFromRemember($pdo);
     }
-    // Normal kullanımın çok üzerinde oluşan istemci döngülerini ucuz oturum
-    // sayacıyla keser. Dakikada 120 istek sınırı kullanıcıyı zorlamaz; bozuk
-    // istemci, çift sekme veya otomasyonun PHP/DB yükünü büyütmesini engeller.
+    // Hit koruması platformda HER ZAMAN aktiftir: normal kullanımın çok
+    // üzerinde oluşan istemci döngüleri ucuz oturum sayacıyla kesilir.
+    // Bozuk istemci, çift sekme veya otomasyonun PHP/DB yükünü büyütmez.
     if (!in_array($action, ['get_media', 'media'], true)) {
-        sessionRateGuard('global', 120, 60);
+        sessionRateGuard('global', HIT_PROTECTION_SESSION_MAX_REQUESTS, 60);
     }
-    // Tüm hesabı kapsayan okuma bütçesi: yoklama fırtınası hesabın günlük
-    // "hits" kotasını aşıp askıya alınmasına neden olmasın. Retry-After döner,
-    // web istemcisi bu başlığa uyarak geri çekilir. (get_media/media hariç: onlar
-    // için sessionRateGuard yeterli ve bu uç zaten ağır görsel taşıyabilir.)
+    // Tüm hesabı kapsayan okuma bütçesi (kalıcı koruma): yoklama fırtınası
+    // hesabın günlük "hits" kotasını aşıp askıya alınmasına neden olmasın.
+    // Retry-After döner, web istemcisi bu başlığa uyarak geri çekilir.
+    // (get_media/media hariç: onlar için sessionRateGuard yeterli ve bu uç
+    // zaten ağır görsel taşıyabilir.)
     if (in_array($action, ['get_rooms', 'get_messages', 'get_message_views', 'get_user_profile', 'poll_push', 'heartbeat', 'session', 'get_banned_info'], true)) {
-        // Ortam değişkenleriyle ayarlanabilir (varsayılan: 200 istek/dk pencere, 45sn bekleme).
-        // Normal kullanım çok altında kalır; yalnızca kaçak/yoklama fırtınası hesabı düşürmesin.
-        $hotReadsMax = max(20, (int) (envValue('ASRA_HOT_READS_PER_MIN', '200')));
+        // Ortam değişkeniyle yükseltilebilir; koruma tavanı her zaman uygulanır.
+        $hotReadsMax = min(max(20, (int) (envValue('ASRA_HOT_READS_PER_MIN', (string) HIT_PROTECTION_MAX_REQUESTS))), HIT_PROTECTION_MAX_REQUESTS);
         $hotReadsWindow = max(15, (int) (envValue('ASRA_HOT_READS_WINDOW', '60')));
-        $hotReadsCooldown = max(5, (int) (envValue('ASRA_HOT_READS_COOLDOWN', '45')));
+        $hotReadsCooldown = max(5, (int) (envValue('ASRA_HOT_READS_COOLDOWN', (string) HIT_PROTECTION_COOLDOWN_SECONDS)));
         consumeGlobalReadBudget($pdo, 'hot_reads', $hotReadsMax, $hotReadsWindow, $hotReadsCooldown);
     }
     // Okuma isteklerinde oturum kilidi erken bırakılır - paralel polling hızlanır, timeout azalır
@@ -5110,6 +5400,8 @@ function dispatch(): never
         'admin_change_user_password' => actionAdminChangeUserPassword($pdo, $data),
         'admin_adjust_coins' => actionAdminAdjustCoins($pdo, $data),
         'admin_reset_invite_code' => actionAdminResetInviteCode($pdo, $data),
+        'admin_access_code_status' => actionAdminAccessCodeStatus($pdo),
+        'admin_set_access_code' => actionAdminSetAccessCode($pdo, $data),
         'admin_send_announcement' => actionAdminSendAnnouncement($pdo, $data),
         'admin_delete_announcement' => actionAdminDeleteAnnouncement($pdo, $data),
         'admin_search_users' => actionAdminSearchUsers($pdo),

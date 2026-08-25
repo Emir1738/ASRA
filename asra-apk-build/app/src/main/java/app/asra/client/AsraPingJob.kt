@@ -9,7 +9,8 @@ class AsraPingJob : JobService() {
             try {
                 if (AsraSession.shouldWatch(this)) {
                     AsraWatch.startEngine(this, force = true)
-                    AsraInbox.poll(this)
+                    // Push mimarisi: 30 dk'lık job hostu YOKLAMAZ (yalnız ntfy.sh)
+                    AsraInbox.poll(this, ntfyOnly = true)
                     AsraWatch.schedule(this, force = true)
                 }
             } catch (_: Exception) {

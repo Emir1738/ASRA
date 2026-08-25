@@ -70,7 +70,9 @@ object AsraNtfy {
     fun pollOnce(context: Context) {
         val app = context.applicationContext
         synchronized(pollLock) {
-            pollSite(app)
+            // Push mimarisi: hostumuzu yoklamıyoruz (poll_push kaldırıldı).
+            // Olaylar ntfy.sh kanalından gelir; bu sorgu harici push
+            // servisinedir, kendi sunucumuz hit yemez.
             pollNtfy(app)
         }
     }
@@ -111,6 +113,11 @@ object AsraNtfy {
     }
 
     private fun pollNtfy(app: Context) {
+        // Sayfa görünürde ve kendi ntfy kanalını çalıştırıyorsa gerçek
+        // zamanlı akış sayfada; motor bu aralıkta ntfy'yi sorgulamaz
+        // (ntfy.sh yükü ve pil tasarrufu). Arka planda bildirimler aynen
+        // çalışmaya devam eder (appVisible=false).
+        if (AsraWatch.appVisible && AsraWatch.pageNtfyChannel) return
         val topic = topic(app)
         val prefs = store(app)
         val since = prefs.getString(KEY_SINCE, "0").orEmpty().ifBlank { "0" }
@@ -155,6 +162,17 @@ object AsraNtfy {
                         if (raw.isNotBlank()) body = raw
                     }
                     if (self > 0 && senderId == self) return@forEach
+                    // Push mimarisi: olay gelince WebView anında güncellenir.
+                    // Uygulama ön plandaysa bildirim yerine WebView'e iletilir
+                    // (web istemci tek istekle tazelenir; periyodik yoklama yok).
+                    if (AsraWatch.appVisible) {
+                        val payload = JSONObject()
+                            .put("rid", roomId)
+                            .put("rn", roomName)
+                            .put("tx", body)
+                            .toString()
+                        AsraBus.pushToWeb(payload)
+                    }
                     if (AsraWatch.shouldSuppressNotify(app)) return@forEach
                     if (!AsraWatch.canNotify(app)) return@forEach
                     if (markShown(prefs, roomId, senderId, body)) return@forEach

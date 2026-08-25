@@ -88,6 +88,8 @@ class MainActivity : Activity() {
         notifier = AsraNotifier(this)
         notifier.ensureChannel()
         AsraIdentity.installSiteCookie(this)
+        // Güncelleme/temizlik sonrası silinen oturum çerezlerini WebView'e geri yaz
+        AsraSession.restoreToWebView(this)
         applyWindowChrome()
         setContentView(R.layout.activity_main)
         captureRoomIntent(intent)
@@ -168,6 +170,11 @@ class MainActivity : Activity() {
         webContainer.removeAllViews()
         webContainer.addView(view)
         webView = view
+        // Push mimarisi: ntfy olayı gelince WebView'e anında ilet (yoklama yok)
+        AsraBus.webPush = { payload ->
+            val escaped = org.json.JSONObject.quote(payload)
+            view.evaluateJavascript("window.__asraPush && window.__asraPush($escaped);", null)
+        }
 
         val restored = savedInstanceState?.let { view.restoreState(it) }
         if (restored != null && restored.size > 0) {
@@ -178,7 +185,7 @@ class MainActivity : Activity() {
                 view.clearCache(true)
                 CookieManager.getInstance().flush()
             } catch (_: Exception) {}
-            val bustUrl = START_URL + (if (START_URL.contains("?")) "&" else "?") + "_v=1.5.4_" + System.currentTimeMillis()
+            val bustUrl = START_URL + (if (START_URL.contains("?")) "&" else "?") + "_v=1.5.7_" + System.currentTimeMillis()
             view.loadUrl(bustUrl)
         }
     }
@@ -216,7 +223,7 @@ class MainActivity : Activity() {
         }
         val baseUa = settings.userAgentString ?: ""
         if (!baseUa.contains("AsraApp/")) {
-            settings.userAgentString = "$baseUa AsraApp/1.5.4"
+            settings.userAgentString = "$baseUa AsraApp/1.5.7"
         }
         AsraSession.rememberUserAgent(this, settings.userAgentString ?: "")
     }
@@ -383,6 +390,7 @@ class MainActivity : Activity() {
         AsraWatch.startEngine(this)
         AsraWatch.schedule(this)
         val view = webView
+        AsraBus.webPush = null
         webView = null
         if (view != null) {
             webContainer.removeView(view)
@@ -950,7 +958,7 @@ class MainActivity : Activity() {
 
     companion object {
         const val EXTRA_ROOM_ID = "asra_room_id"
-        private const val START_URL = "https://asra.freedev.app" // v1.5.4 - cache-bust ile güncel
+        private const val START_URL = "https://asra.freedev.app" // cache-bust ile her açılışta güncel sürüm
         private const val REQ_FILE = 4101
         private const val REQ_CAMERA = 4102
         private const val REQ_WEB_PERM = 4103

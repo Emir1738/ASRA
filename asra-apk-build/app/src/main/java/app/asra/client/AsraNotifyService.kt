@@ -27,7 +27,8 @@ class AsraNotifyService : Service() {
             lock.setReferenceCounted(false)
             try {
                 lock.acquire(20_000L)
-                AsraInbox.poll(this)
+                // Push mimarisi: arka plan döngüsü hostu YOKLAMAZ (yalnız ntfy.sh)
+                AsraInbox.poll(this, ntfyOnly = true)
             } catch (_: Exception) {
             } finally {
                 try {

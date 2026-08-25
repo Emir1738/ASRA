@@ -1,0 +1,9 @@
+# Build ürünleri
+asra-apk-build/build/
+*.apk.bak
+
+# Test çalıştırma artıkları (her koşuda yeniden oluşur)
+_tests/run/
+_tests/run_push/
+_tests/run_csrf/
+_tests/ntfy_log.json

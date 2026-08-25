@@ -59,8 +59,8 @@ echo "[2/7] linking resources"
   --custom-package app.asra.client \
   --min-sdk-version 24 \
   --target-sdk-version 34 \
-  --version-code 22 \
-  --version-name 1.5.5 \
+  --version-code 24 \
+  --version-name 1.5.7 \
   --auto-add-overlay \
   "$OUT/compiled/res.zip"
 
@@ -128,7 +128,7 @@ echo "[7/7] signing"
 "$APKSIGNER" verify --verbose "$OUT/asra-release.apk"
 "$AAPT2" dump badging "$OUT/asra-release.apk" | head -n 20 || true
 
-cp -f "$OUT/asra-release.apk" /home/user/asra-1.5.5.apk
-cp -f "$OUT/asra-release.apk" "$ROOT/asra-1.5.5.apk"
-ls -lh /home/user/asra-1.5.5.apk
+cp -f "$OUT/asra-release.apk" /home/user/asra-1.5.7.apk
+cp -f "$OUT/asra-release.apk" "$ROOT/asra-1.5.7.apk"
+ls -lh /home/user/asra-1.5.7.apk
 echo BUILD_OK

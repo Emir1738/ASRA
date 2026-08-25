@@ -9,7 +9,13 @@ object AsraInbox {
     @Volatile
     private var busy = false
 
-    fun poll(context: Context) {
+    /**
+     * @param ntfyOnly true: YALNIZCA ntfy.sh (harici push servisi) sorgulanır,
+     *                 kendi sunucumuza (get_rooms vb.) HİÇ istek gitmez.
+     *                 Arka plan döngüleri (servis/alarmlar/job) bunu kullanır.
+     *                 false: kullanıcı eylemi (app açılışı vb.) — tam senkron.
+     */
+    fun poll(context: Context, ntfyOnly: Boolean = false) {
         if (busy) return
         synchronized(lock) {
             if (busy) return
@@ -17,6 +23,7 @@ object AsraInbox {
             try {
                 val app = context.applicationContext
                 AsraNtfy.pollOnce(app)
+                if (ntfyOnly) return
                 val cookie = AsraSession.cookie(app)
                 if (!AsraSession.hasSession(cookie)) {
                     AsraNtfy.ensureRegistered(app)
