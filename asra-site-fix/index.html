@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-AJq7aQ+BKk/PkffXK654RHhka5zTLWEWycQiD1U8n1c='; script-src 'self' 'sha256-tKKdKTV7HNqvmO20KH2O97sOlA92gnhGle/tjEjJxCo='; connect-src 'self' https://ntfy.sh; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-AJq7aQ+BKk/PkffXK654RHhka5zTLWEWycQiD1U8n1c='; script-src 'self' 'sha256-pYxOxaKsgd68FpSE6f80ek6Dr49/FFQopaGQxxjBlzk='; connect-src 'self' https://ntfy.sh; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Asra Chat</title>
   <style>
 @charset "UTF-8";
@@ -1359,6 +1359,7 @@ const state = {
   pushedRefreshTimer: null,
   updateNudgeDismissed: false,
   pushedMessages: {},
+  localIdMap: {}, // yerel gonderilen mesajin gecici id'si -> sunucu id'si
   connected: true,
   loadingCount: 0,
   deviceBound: false,
@@ -2798,36 +2799,20 @@ function handlePushEvent(p) {
 }
 
 // Yerel (sunucusuz) mesaj satiri: push ve yeni gonderilen mesajlar icin
+// Yerel (sunucusuz) mesaj satiri: resmî render ile AYNI ornekleyiciyi
+// kullandigi icin silme butonu / gorenlere / profil / gorsel eylemleri
+// yerel satirlarda da tam olarak calisir.
 function renderLocalRow(msg) {
-  const row = document.createElement('article');
-  row.className = 'message-row' + (msg.is_own ? ' own' : '');
   if (msg.type === 'system') {
+    const row = document.createElement('article');
     const sys = document.createElement('div');
     sys.className = 'system-message' + (/^DUYURU:/i.test(msg.content) ? ' announcement-message' : ' welcome-message');
     sys.append(document.createTextNode(msg.content.replace(/^DUYURU:\s*/i, '').trim() || 'Sistem mesajı'));
     row.append(sys);
     return row;
   }
-  const avatarButton = avatar(msg.username, msg.avatar_color, false, msg.profile_image_path, msg.active_profile_frame);
-  const wrap = createElement('div', 'bubble-wrap');
-  const bubble = createElement('div', 'message-bubble');
-  bubble.append(createElement('strong', 'message-author', msg.username));
-  if (msg.image_path && isSafeImagePath(msg.image_path)) {
-    const image = document.createElement('img');
-    image.className = 'message-image';
-    image.src = imageSource(msg.image_path);
-    image.alt = msg.content ? 'Mesaja eklenen resim' : 'Paylaşılan resim';
-    image.loading = 'lazy';
-    image.decoding = 'async';
-    image.draggable = false;
-    bubble.append(image);
-  }
-  if (msg.content) bubble.append(createElement('p', 'message-text', msg.content));
-  const meta = createElement('div', 'message-meta');
-  meta.append(createElement('time', '', formatTime(msg.created_at)));
-  bubble.append(meta);
-  wrap.append(bubble);
-  row.append(avatarButton, wrap);
+  const row = buildMessageRow(msg, false);
+  row.dataset.localId = String(msg.id);
   return row;
 }
 
@@ -3034,6 +3019,13 @@ async function fetchMessages(initial = false) {
       const extras = [];
       Object.entries(state.pushedMessages).forEach(([id, entry]) => {
         if (now - entry.at > 120000) { delete state.pushedMessages[id]; return; }
+        // Kendi gonderdigimiz mesajlar: ASLA extra olarak geri eklenmez.
+        // Listedeyse korunur (yanki korumasi); listede YOKSA (orn. silindi)
+        // kayit atilir — aksi halde silinen mesaj ekrana dirilirdi.
+        if (entry.own) {
+          if (!fetchedIds.has(Number(id))) delete state.pushedMessages[id];
+          return;
+        }
         if (fetchedIds.has(Number(id))) { delete state.pushedMessages[id]; return; }
         extras.push(entry.msg);
       });
@@ -3083,6 +3075,93 @@ function messagesBelongTogether(previous, current) {
   return new Date(current.created_at).getTime() - new Date(previous.created_at).getTime() <= 5 * 60 * 1000;
 }
 
+// ORTAK SATIR ÖRNEKLEYİCİSİ: resmî çizim (renderMessages) ve yerel
+// çizim (renderLocalRow) AYNI satırı üretir — silme butonu, görenler,
+// profil, görsel eylemleri ve tüm etkileşimler her iki yolda da var.
+// (İki ayrı render kodu tutulması, yerel satırlardan etkileşimlerin
+// kaybolmasına yol açmıştı; kök düzeltme tek paylaşılan üreticidir.)
+function buildMessageRow(message, grouped = false) {
+  const displayContent = repairLegacyTurkishText(message.content);
+  const displayUsername = repairLegacyTurkishText(message.username) || 'Kullanıcı';
+  const row = createElement('article', `message-row${message.is_own ? ' own' : ''}${grouped ? ' grouped' : ''}`);
+  const avatarButton = avatar(displayUsername, message.avatar_color, false, message.profile_image_path, message.active_profile_frame);
+  avatarButton.setAttribute('role', 'button');
+  avatarButton.tabIndex = 0;
+  avatarButton.title = displayUsername;
+  const openProfile = (event) => {
+    event.stopPropagation();
+    renderProfile(message.user_id).catch(displayError);
+  };
+  avatarButton.addEventListener('click', openProfile);
+  avatarButton.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') openProfile(event); });
+
+  const wrap = createElement('div', 'bubble-wrap');
+  const bubble = createElement('div', 'message-bubble');
+  if (message.is_own) {
+    bubble.tabIndex = 0;
+    bubble.setAttribute('role', 'button');
+    bubble.setAttribute('aria-label', 'Mesajı silme bölümünü aç');
+    const messageActions = createElement('button', 'message-actions-button');
+    messageActions.type = 'button';
+    messageActions.append(svgIcon('more'));
+    messageActions.setAttribute('aria-label', 'Mesajı sil');
+    messageActions.title = 'Mesajı sil';
+    messageActions.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openMessageOptions(message);
+    });
+    bubble.append(messageActions);
+  }
+  const author = createElement('button', 'message-author', displayUsername);
+  author.type = 'button';
+  author.addEventListener('click', openProfile);
+  bubble.append(author);
+  if (isSafeImagePath(message.image_path)) {
+    const image = document.createElement('img');
+    image.className = 'message-image';
+    image.src = imageSource(message.image_path);
+    image.alt = displayContent ? 'Mesaja eklenen resim' : 'Paylaşılan resim';
+    image.loading = 'eager';
+    image.decoding = 'async';
+    image.draggable = false;
+    image.addEventListener('dragstart', (event) => event.preventDefault());
+    image.addEventListener('error', () => {
+      const fallback = createElement('small', 'field-note', 'Görsel şu anda yüklenemedi.');
+      image.replaceWith(fallback);
+    });
+    image.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (message.is_own) openMessageOptions(message);
+      else openImageActions(message);
+    });
+    bubble.append(image);
+  }
+  if (displayContent) bubble.append(createElement('p', 'message-text', displayContent));
+  const meta = createElement('div', 'message-meta');
+  meta.append(createElement('time', '', formatTime(message.created_at)));
+  const viewers = createElement('button', 'viewers-button', `${message.view_count} ${t('seenBy')}`);
+  viewers.type = 'button';
+  viewers.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const mid = Number(message.id);
+    if (!mid) return; // henüz sunucuya teslim edilmis yerel mesaj
+    openViewers(mid).catch(displayError);
+  });
+  meta.append(viewers);
+  bubble.append(meta);
+  const openOptions = () => { if (message.is_own) openMessageOptions(message); };
+  if (message.is_own) bubble.addEventListener('click', openOptions);
+  bubble.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    openOptions();
+  });
+  bubble.addEventListener('copy', (event) => event.preventDefault());
+  if (message.is_own) bubble.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') openOptions(); });
+  wrap.append(bubble);
+  row.append(avatarButton, wrap);
+  return row;
+}
+
 function renderMessages(messages, forceBottom = false) {
   const list = $('#message-list');
   if (!list) return;
@@ -3099,7 +3178,6 @@ function renderMessages(messages, forceBottom = false) {
   let previousDate = '';
   messages.forEach((message) => {
     const displayContent = repairLegacyTurkishText(message.content);
-    const displayUsername = repairLegacyTurkishText(message.username) || 'Kullanıcı';
     const currentDate = messageDateKey(message.created_at);
     if (currentDate && currentDate !== previousDate) {
       const divider = createElement('div', 'date-divider');
@@ -3135,81 +3213,7 @@ function renderMessages(messages, forceBottom = false) {
       return;
     }
     const grouped = messagesBelongTogether(previousMessage, message);
-    const row = createElement('article', `message-row${message.is_own ? ' own' : ''}${grouped ? ' grouped' : ''}`);
-    const avatarButton = avatar(displayUsername, message.avatar_color, false, message.profile_image_path, message.active_profile_frame);
-    avatarButton.setAttribute('role', 'button');
-    avatarButton.tabIndex = 0;
-    avatarButton.title = displayUsername;
-    const openProfile = (event) => {
-      event.stopPropagation();
-      renderProfile(message.user_id).catch(displayError);
-    };
-    avatarButton.addEventListener('click', openProfile);
-    avatarButton.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') openProfile(event); });
-
-    const wrap = createElement('div', 'bubble-wrap');
-    const bubble = createElement('div', 'message-bubble');
-    if (message.is_own) {
-      bubble.tabIndex = 0;
-      bubble.setAttribute('role', 'button');
-      bubble.setAttribute('aria-label', 'Mesajı silme bölümünü aç');
-      const messageActions = createElement('button', 'message-actions-button');
-      messageActions.type = 'button';
-      messageActions.append(svgIcon('more'));
-      messageActions.setAttribute('aria-label', 'Mesajı sil');
-      messageActions.title = 'Mesajı sil';
-      messageActions.addEventListener('click', (event) => {
-        event.stopPropagation();
-        openMessageOptions(message);
-      });
-      bubble.append(messageActions);
-    }
-    const author = createElement('button', 'message-author', displayUsername);
-    author.type = 'button';
-    author.addEventListener('click', openProfile);
-    bubble.append(author);
-    if (isSafeImagePath(message.image_path)) {
-      const image = document.createElement('img');
-      image.className = 'message-image';
-      image.src = imageSource(message.image_path);
-      image.alt = displayContent ? 'Mesaja eklenen resim' : 'Paylaşılan resim';
-      image.loading = 'eager';
-      image.decoding = 'async';
-      image.draggable = false;
-      image.addEventListener('dragstart', (event) => event.preventDefault());
-      image.addEventListener('error', () => {
-        const fallback = createElement('small', 'field-note', 'Görsel şu anda yüklenemedi.');
-        image.replaceWith(fallback);
-      });
-      image.addEventListener('click', (event) => {
-        event.stopPropagation();
-        if (message.is_own) openMessageOptions(message);
-        else openImageActions(message);
-      });
-      bubble.append(image);
-    }
-    if (displayContent) bubble.append(createElement('p', 'message-text', displayContent));
-    const meta = createElement('div', 'message-meta');
-    meta.append(createElement('time', '', formatTime(message.created_at)));
-    const viewers = createElement('button', 'viewers-button', `${message.view_count} ${t('seenBy')}`);
-    viewers.type = 'button';
-    viewers.addEventListener('click', (event) => {
-      event.stopPropagation();
-      openViewers(message.id).catch(displayError);
-    });
-    meta.append(viewers);
-    bubble.append(meta);
-    const openOptions = () => { if (message.is_own) openMessageOptions(message); };
-    if (message.is_own) bubble.addEventListener('click', openOptions);
-    bubble.addEventListener('contextmenu', (event) => {
-      event.preventDefault();
-      openOptions();
-    });
-    bubble.addEventListener('copy', (event) => event.preventDefault());
-    if (message.is_own) bubble.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') openOptions(); });
-    wrap.append(bubble);
-    row.append(avatarButton, wrap);
-    list.append(row);
+    list.append(buildMessageRow(message, grouped));
     previousMessage = message;
   });
   if (forceBottom || wasNearBottom) list.scrollTop = list.scrollHeight;
@@ -3364,8 +3368,18 @@ function reconcileLocalMessage(localId, roomId, updates, msg) {
     }
   } catch (_) {}
   if (serverId) {
+    // Yerel -> sunucu id eslemesi: sonraki islemler (ornek silme, gorenlere)
+    // resmi id'yi kullanir. 200 kaydin ustunde eskileri at.
+    if (!state.localIdMap) state.localIdMap = {};
+    state.localIdMap[localId] = serverId;
+    const keys = Object.keys(state.localIdMap);
+    if (keys.length > 200) {
+      keys.slice(0, keys.length - 200).forEach((k) => delete state.localIdMap[k]);
+    }
     // Yankı koruması: sunucu bu mesajı ntfy'den geri gönderebilir.
-    state.pushedMessages[serverId] = { msg: msg || null, at: Date.now() };
+    // own:true -> birlesme (fetchMessages) bu kaydi asla extra olarak
+    // geri eklemez; silda listede olmayacagi icin kayit da atilir.
+    state.pushedMessages[serverId] = { msg: msg || null, at: Date.now(), own: true };
     const list = $('#message-list');
     const row = list && list.querySelector(`[data-local-id="${CSS.escape(String(localId))}"]`);
     if (row) {
@@ -3706,6 +3720,27 @@ function showUndoDeleteToast(payload) {
 }
 
 async function deleteMessage(messageId) {
+  const idStr = String(messageId);
+  // Yerel (henüz sunucuya teslim edilmemiş / edilmiş) mesaj:
+  if (idStr.startsWith('local-')) {
+    closeModal();
+    // 1) Outbox'ta hâlâ bekliyorsa: teslimi iptal et (sunucuya hiç gitmedi)
+    const outboxIdx = state.sendOutbox.findIndex((e) => e.localId === idStr);
+    if (outboxIdx >= 0) {
+      state.sendOutbox.splice(outboxIdx, 1);
+      persistSendOutbox();
+      removeLocalMessageRows(idStr);
+      toast('Mesaj silindi.', 'warning');
+      return;
+    }
+    // 2) Teslim edilmişse: sunucu id'si üzerinden normal akış (undo dahil)
+    const serverId = Number((state.localIdMap || {})[idStr] || 0);
+    if (serverId) { deleteMessage(serverId); return; }
+    // 3) Ne outbox'ta ne haritada (teslim edildiyse haritada olmalı; emniyet)
+    removeLocalMessageRows(idStr);
+    toast('Mesaj silindi.', 'warning');
+    return;
+  }
   try {
     const result = await api('delete_message', { method: 'POST', data: { message_id: messageId } });
     closeModal();
@@ -3713,6 +3748,27 @@ async function deleteMessage(messageId) {
     await fetchMessages(true);
     showUndoDeleteToast(result);
   } catch (error) { displayError(error); }
+}
+
+// Yerel satiri ekrandan + onbellekten kaldirir (sunucu istegi ATMAZ)
+function removeLocalMessageRows(localId) {
+  const serverId = Number((state.localIdMap || {})[localId] || 0);
+  const list = $('#message-list');
+  if (list) {
+    const row = list.querySelector(`[data-local-id="${CSS.escape(localId)}"]`) ||
+      (serverId ? list.querySelector(`[data-local-id="${CSS.escape(String(serverId))}"]`) : null);
+    if (row) row.remove();
+  }
+  const roomId = Number(state.currentRoom?.id || 0);
+  if (roomId) {
+    try {
+      const raw = localStorage.getItem(msgCacheKey(roomId));
+      if (raw) {
+        const arr = (JSON.parse(raw) || []).filter((m) => String(m.id) !== localId && Number(m.id) !== serverId);
+        localStorage.setItem(msgCacheKey(roomId), JSON.stringify(arr));
+      }
+    } catch (_) {}
+  }
 }
 
 async function openViewers(messageId) {
