@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-AJq7aQ+BKk/PkffXK654RHhka5zTLWEWycQiD1U8n1c='; script-src 'self' 'sha256-pYxOxaKsgd68FpSE6f80ek6Dr49/FFQopaGQxxjBlzk='; connect-src 'self' https://ntfy.sh; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-AJq7aQ+BKk/PkffXK654RHhka5zTLWEWycQiD1U8n1c='; script-src 'self' 'sha256-HXjJ2BewZr+h16Mk55I2XbCekTqS3dgh/qExzUZ0uWY='; connect-src 'self' https://ntfy.sh; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Asra Chat</title>
   <style>
 @charset "UTF-8";
@@ -1351,6 +1351,7 @@ const state = {
   modalCleanup: null,
   adminActive: false,
   sendOutbox: [],
+  undoBuffer: {}, // silinen mesajin 4sn undo penceresi boyunca yerel kopyasi
   sendCooldownActive: false,
   sendCooldownTimer: null,
   adminTab: 'users',
@@ -2063,8 +2064,10 @@ function showApp() {
   $('#app-shell').hidden = false;
   applyTheme(state.user.theme);
   applyLanguage();
+  // Coin basligi oturum verisinden doluyor; ekonomi/ceklistegih veri
+  // YALNIZCA ilgili ekran acildiginda cekilir (renderShop/renderQuestHub)
+  // — sayfa acilisinda isin arkasina sizen prefetch istegi yok.
   updateCoinHeader(state.user.aa_coins);
-  refreshEconomy(false).catch(() => {});
   // SIHIR: heartbeat YOK — oturum kurtarma hatırla-token ile zaten sessizce
   // çalışıyor; onay kararı ntfy push'u ile geliyor (rid=0 -> session tazeleme);
   // kullanıcı verileri her gerçek eylemde tazeleniyor. Hosta periyodik istek yok.
@@ -3084,6 +3087,7 @@ function buildMessageRow(message, grouped = false) {
   const displayContent = repairLegacyTurkishText(message.content);
   const displayUsername = repairLegacyTurkishText(message.username) || 'Kullanıcı';
   const row = createElement('article', `message-row${message.is_own ? ' own' : ''}${grouped ? ' grouped' : ''}`);
+  row.dataset.msgId = String(message.id);
   const avatarButton = avatar(displayUsername, message.avatar_color, false, message.profile_image_path, message.active_profile_frame);
   avatarButton.setAttribute('role', 'button');
   avatarButton.tabIndex = 0;
@@ -3384,6 +3388,7 @@ function reconcileLocalMessage(localId, roomId, updates, msg) {
     const row = list && list.querySelector(`[data-local-id="${CSS.escape(String(localId))}"]`);
     if (row) {
       row.dataset.localId = String(serverId);
+      row.dataset.msgId = String(serverId);
       // Görsel mesaj: teslim sonrası resmi resim satıra yerinde eklenir
       // (ilk çizimde dosya henüz sunucuda yoktu).
       const imagePath = updates?.image_path || null;
@@ -3696,6 +3701,7 @@ function showUndoDeleteToast(payload) {
     } catch (error) {
       if (error.code !== 'DELETE_COOLDOWN_ACTIVE' && error.code !== 'MESSAGE_NOT_FOUND') displayError(error);
     }
+    delete state.undoBuffer[payload.message_id];
     item.remove();
   }, delay + 120);
   undo.addEventListener('click', async () => {
@@ -3709,8 +3715,8 @@ function showUndoDeleteToast(payload) {
         data: { message_id: payload.message_id, undo_token: payload.undo_token }
       });
       item.remove();
-      state.messagesSignature = '';
-      await fetchMessages(true);
+      // Yerel geri cizim (0 ek istek): onbellekten dogru sirayla yeniden cizilir
+      restoreDeletedLocally(payload.message_id);
       toast('Mesaj geri getirildi.');
     } catch (error) {
       item.remove();
@@ -3744,10 +3750,94 @@ async function deleteMessage(messageId) {
   try {
     const result = await api('delete_message', { method: 'POST', data: { message_id: messageId } });
     closeModal();
-    state.messagesSignature = '';
-    await fetchMessages(true);
+    // SIFIR EK ISTEK: satir + onbellek yerinde guncellenir, liste yeniden
+    // cekilmez (eski akistaki tam refetch gereksiz ek hit yiyordu).
+    removeDeletedLocally(Number(messageId));
     showUndoDeleteToast(result);
   } catch (error) { displayError(error); }
+}
+
+// Silinen mesaj ekrandan + onbellekten yerinde kaldirilir (0 istek).
+// Undo penceresi boyunca hafizada tutulur (undoBuffer).
+function removeDeletedLocally(serverId) {
+  const roomId = Number(state.currentRoom?.id || 0);
+  // Undo kopyasi: onbellegin resmi kaydi (yoksa DOM'dan kurtar)
+  let entry = null;
+  try {
+    const raw = localStorage.getItem(msgCacheKey(roomId));
+    if (raw) {
+      const arr = JSON.parse(raw) || [];
+      entry = arr.find((m) => Number(m.id) === serverId) || null;
+    }
+  } catch (_) {}
+  if (!entry) {
+    const list = $('#message-list');
+    const row = list && list.querySelector(`[data-msg-id="${CSS.escape(String(serverId))}"]`);
+    const txt = row && (row.querySelector('.message-text') || { textContent: '' }).textContent;
+    entry = {
+      id: serverId, user_id: Number(state.user?.id || 0), username: state.user?.username || '',
+      avatar_color: state.user?.avatar_color || 'c1', profile_image_path: null, active_profile_frame: null,
+      type: 'text', content: txt || '', image_path: null,
+      created_at: row ? (row.querySelector('time') || { textContent: '' }).textContent : new Date().toISOString(),
+      view_count: 0,
+    };
+  }
+  if (entry) state.undoBuffer[serverId] = entry;
+  // DOM
+  const list = $('#message-list');
+  if (list) {
+    const row = list.querySelector(`[data-msg-id="${CSS.escape(String(serverId))}"]`) ||
+      list.querySelector(`[data-local-id="${CSS.escape(String(serverId))}"]`);
+    if (row) row.remove();
+  }
+  // Onbellek
+  if (roomId) {
+    try {
+      const raw = localStorage.getItem(msgCacheKey(roomId));
+      if (raw) {
+        const arr = (JSON.parse(raw) || []).filter((m) => Number(m.id) !== serverId);
+        localStorage.setItem(msgCacheKey(roomId), JSON.stringify(arr));
+      }
+    } catch (_) {}
+  }
+  if (state.localIdMap) {
+    const keys = Object.keys(state.localIdMap).filter((k) => Number(state.localIdMap[k]) === serverId);
+    keys.forEach((k) => delete state.localIdMap[k]);
+  }
+}
+
+// Geri al: sunucu 1 istegi + yerel yeniden cizim (ek istek YOK)
+function restoreDeletedLocally(serverId) {
+  const roomId = Number(state.currentRoom?.id || 0);
+  const entry = state.undoBuffer[serverId];
+  delete state.undoBuffer[serverId];
+  if (!roomId || !entry) {
+    // Emniyet: yerel kopya yoksa (ornek sayfa yenilendi) tek kurtarma cekimi
+    if (state.route === 'room' && state.currentRoom) fetchMessages(false).catch(() => {});
+    return;
+  }
+  entry.is_own = Number(entry.user_id) === Number(state.user?.id || 0);
+  // Onbellegi geri ekle + ID sirasinda tut
+  try {
+    const raw = localStorage.getItem(msgCacheKey(roomId));
+    const arr = raw ? (JSON.parse(raw) || []) : [];
+    if (!arr.some((m) => Number(m.id) === Number(entry.id))) arr.push(Object.assign({}, entry));
+    arr.sort((a, b) => Number(a.id) - Number(b.id));
+    localStorage.setItem(msgCacheKey(roomId), JSON.stringify(arr.slice(-MSG_CACHE_MAX)));
+  } catch (_) {}
+  // Guncel odadaysa: onbellegeden (0 istek) dogru sirayla yeniden ciz
+  if (Number(state.currentRoom?.id || 0) === roomId && state.route === 'room') {
+    const cached = msgCacheGet(roomId);
+    if (cached && cached.length) {
+      state.messagesSignature = '';
+      renderMessages(cached);
+    } else {
+      const list = $('#message-list');
+      if (list && !list.querySelector(`[data-msg-id="${CSS.escape(String(serverId))}"]`)) {
+        list.append(buildMessageRow(entry, false));
+      }
+    }
+  }
 }
 
 // Yerel satiri ekrandan + onbellekten kaldirir (sunucu istegi ATMAZ)
