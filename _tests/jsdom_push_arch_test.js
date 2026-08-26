@@ -8,7 +8,7 @@ const URL = 'http://127.0.0.1:8090/';
 const NTFY_BASE = 'http://127.0.0.1:8090/ntfy';
 
 (async () => {
-  const browser = await puppeteer.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const browser = await puppeteer.launch({ executablePath: '/tmp/chrome/chrome/linux-152.0.7977.64/chrome-linux64/chrome', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   const page = await browser.newPage();
   await page.setViewport({ width: 393, height: 850, isMobile: true });
 
