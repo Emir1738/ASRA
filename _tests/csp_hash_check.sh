@@ -12,7 +12,7 @@
 #  hash'leri güncellemek gerekiyorsa yeni değerleri yazdırır.
 # ============================================================================
 set -u
-F="${1:-/home/user/projects/ASRA/asra-site-fix/index.html}"
+F="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/asra-site-fix/index.html}"
 
 python3 - "$F" <<'EOF'
 import re, sys, hashlib, base64

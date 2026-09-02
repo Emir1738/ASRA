@@ -5,7 +5,7 @@ declare(strict_types=1);
  * JSON Güvencesi ve Performans İyileştirmeleri (2026-08-20)
  * - Tüm çıktılar JSON olacak, fatal hatalar bile JSON döner
  * - Oturum kilidi okuma isteklerinde erken bırakılır (paralel istekler hızlanır)
- * - Push bildirimleri non-blocking, sunucu gecikmesi azaltıldı
+ * - Bildirim/push sistemi kaldırıldı (2026-08-29): sunucu artık hiçbir bildirim üretmez
  * - Onay bekleyenler yönetim ekranından gizlendi
  */
 ob_start();
@@ -41,6 +41,9 @@ set_error_handler(function (int $severity, string $message, string $file, int $l
 
 
 const PERMANENT_INVITE_CODE = 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
+// Şema sürüm anahtarı: yükseltildiğinde her veritabanı kurulumu bir kez
+// yeniden çalışır (idempotenttir) ve yeni tablo/tohumlar eklenir.
+const SCHEMA_VERSION_KEY = 'schema:runtime:v19';
 const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MESSAGE_RETENTION_HOURS = 24;
@@ -60,9 +63,15 @@ const SESSION_ROTATION_GRACE = 45;
 // Hit koruması: platformda HER ZAMAN aktiftir (kod/anahtar ile hiçbir ilişkisi yok).
 // Sunucu okuma bütçesi sürekli düşük tavana tutulur; ücretsiz host "hits"
 // kotası daima korunur. İstemci tarafı yoklama ritmi de kalıcı olarak yavaştır.
-const HIT_PROTECTION_MAX_REQUESTS = 60;
-const HIT_PROTECTION_COOLDOWN_SECONDS = 90;
-const HIT_PROTECTION_SESSION_MAX_REQUESTS = 50;
+// Hesap GENELİNİ kapsayan okuma tavanı. Bu bir emniyet sübabıdır, günlük
+// kota değildir: boşta kullanıcı 1 istek/dk harcadığı için normal kullanımda
+// asla devreye girmez. Eski değer (60/dk) birkaç eşzamanlı kullanıcıda bile
+// aşılıp herkesi kilitliyordu.
+const HIT_PROTECTION_MAX_REQUESTS = 600;
+const HIT_PROTECTION_COOLDOWN_SECONDS = 30;
+// Oturum başına sınır: tek bir bozuk/otomatikleşmiş istemciyi durdurur.
+// Asıl kötüye kullanım koruması budur; genel tavan yalnızca emniyet sübabıdır.
+const HIT_PROTECTION_SESSION_MAX_REQUESTS = 90;
 // Açık erişim kodu — yetkili panel "Kod" bölümü:
 // AÇIKKEN bu kodu giren HERKES sınırsız (davet hakkı tüketmeden) katılabilir.
 // KAPATILINCA kod geçersiz olur; tekrar AÇILINCA otomatik YENİ kod üretilir.
@@ -85,6 +94,34 @@ function envValue(string $name, string $default = ''): string
 {
     $value = getenv($name);
     return $value === false ? $default : $value;
+}
+
+/**
+ * Şema kurulum damgası — veritabanının İÇİNDE tutulur.
+ *
+ * Neden dosya değil: sys_get_temp_dir() içindeki bir işaret dosyası 24 saat
+ * geçerlidir ve veritabanının yeniden kurulduğunu (hesap taşıma, SQL içe
+ * aktarma, test sıfırlaması) BİLEMEZ. Sıcak bir işaret dosyası, tabloları
+ * silinmiş bir veritabanında şema kurulumunu ATLATIR ve site 500 üretir.
+ * Damga veritabanında tutulduğunda veritabanıyla birlikte yok olur; kurulum
+ * gerektiğinde mutlaka yeniden çalışır. Maliyet: birincil anahtar üzerinden
+ * tek satırlık bir SELECT.
+ */
+function schemaStampApplied(PDO $pdo, string $key): bool
+{
+    $stmt = $pdo->prepare('SELECT 1 FROM rate_limits WHERE rate_key = ? LIMIT 1');
+    $stmt->execute([$key]);
+    return (bool) $stmt->fetchColumn();
+}
+
+function markSchemaStamp(PDO $pdo, string $key): void
+{
+    $stmt = $pdo->prepare(
+        'INSERT INTO rate_limits (rate_key, attempts, window_started_at, blocked_until)
+         VALUES (?, 0, UTC_TIMESTAMP(), NULL)
+         ON DUPLICATE KEY UPDATE updated_at = UTC_TIMESTAMP()'
+    );
+    $stmt->execute([$key]);
 }
 
 /**
@@ -136,7 +173,16 @@ function db(): PDO
         return $pdo;
     }
 
-    $dsn = envValue('ASRA_DB_DSN', 'mysql:host=sql102.infinityfree.com;port=3306;dbname=if0_42676193_asra;charset=utf8mb4');
+    // Bağlantı bilgileri: geçerli InfinityFree hesabı (sql303 / if0_42805855).
+    // Tek dosyalık kurulum: auth.php tek başına yeterlidir. Farklı bir
+    // veritabanına bağlanmak gerekirse ASRA_DB_DSN / ASRA_DB_USER /
+    // ASRA_DB_PASSWORD ortam değişkenleri bu varsayılanları ezer.
+    $dsn = envValue(
+        'ASRA_DB_DSN',
+        'mysql:host=sql303.infinityfree.com;port=3306;dbname=if0_42805855_asra;charset=utf8mb4'
+    );
+    $dbUser = envValue('ASRA_DB_USER', 'if0_42805855');
+    $dbPassword = envValue('ASRA_DB_PASSWORD', 'SDspuzgAn17CUg');
     $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -148,7 +194,7 @@ function db(): PDO
     $lastError = null;
     for ($attempt = 1; $attempt <= 3; $attempt++) {
         try {
-            $pdo = new PDO($dsn, envValue('ASRA_DB_USER', 'if0_42676193'), envValue('ASRA_DB_PASSWORD', '4JzrEQd7YjjNv'), $options);
+            $pdo = new PDO($dsn, $dbUser, $dbPassword, $options);
             $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
             $pdo->exec("SET time_zone = '+00:00'");
             $pdo->exec('SET SESSION innodb_lock_wait_timeout = 3');
@@ -253,33 +299,220 @@ function safeSchemaExec(PDO $pdo, string $sql, string $label): void
     }
 }
 
+/**
+ * Çekirdek şema + oda kataloğu: veritabanı BOŞ olsa bile uygulama ayağa kalkar.
+ *
+ * Neden gerekli: daha önce users/rooms/messages gibi temel tablolar yalnızca
+ * dışarıdan yüklenen SQL ile oluşuyordu; ensureRuntimeSchema ise rate_limits
+ * ve users tablolarının VAR OLDUĞUNU varsayıyordu. Boş veya kısmen yüklenmiş
+ * bir veritabanında ilk istek 500 dönüyordu. Artık şema kendini kurar.
+ *
+ * Güvenlik: tüm ifadeler CREATE TABLE IF NOT EXISTS / INSERT IGNORE olduğu
+ * için tekrar tekrar çalışmak zararsızdır; mevcut veri ve kullanıcı
+ * düzenlemeleri asla ezilmez.
+ */
+/**
+ * Eski şemadan kalan tabloya eksik bir sütunu güvenle ekler.
+ *
+ * Neden gerekli: kullanıcı veritabanını eski bir dökümden içe aktardığında
+ * tablolar VAR olur ama yeni sürümün beklediği sütunlar eksik kalır.
+ * CREATE TABLE IF NOT EXISTS mevcut tabloya dokunmadığı için eksik sütun
+ * kalıcı hataya yol açar (ör. rooms.position). Bu yardımcı sütun yoksa
+ * ekler, varsa dokunmaz.
+ */
+function ensureColumn(PDO $pdo, string $table, string $column, string $ddl): void
+{
+    $check = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+    );
+    $check->execute([$table, $column]);
+    if ((int) $check->fetchColumn() === 0) {
+        try {
+            $pdo->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $ddl);
+        } catch (PDOException $error) {
+            // 42S21: sütun eşzamanlı olarak eklendi — zararsız.
+            if ((string) $error->getCode() !== '42S21') {
+                throw $error;
+            }
+        }
+    }
+}
+
+function ensureCoreSchema(PDO $pdo): void
+{
+    $statements = [
+        'CREATE TABLE IF NOT EXISTS users (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  username VARCHAR(30) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  session_version INT UNSIGNED NOT NULL DEFAULT 1,
+  avatar_color VARCHAR(16) NOT NULL DEFAULT \'c1\',
+  profile_image_path VARCHAR(255) NULL,
+  theme VARCHAR(16) NOT NULL DEFAULT \'dark\',
+  language VARCHAR(8) NOT NULL DEFAULT \'tr\',
+  show_read_receipts TINYINT(1) NOT NULL DEFAULT 1,
+  show_last_seen TINYINT(1) NOT NULL DEFAULT 1,
+  about TEXT NULL,
+  birthday DATE NULL,
+  aa_coins DECIMAL(12,1) NOT NULL DEFAULT 0.0,
+  active_profile_frame VARCHAR(40) NULL,
+  total_active_seconds INT UNSIGNED NOT NULL DEFAULT 0,
+  last_activity_counted_at DATETIME NULL,
+  invite_reset_notice_at DATETIME NULL,
+  coin_debt_due_at DATETIME NULL,
+  coin_debt_notice_at DATETIME NULL,
+  approval_status ENUM(\'approved\',\'pending\') NOT NULL DEFAULT \'approved\',
+  approval_reason VARCHAR(1000) NULL,
+  approval_submitted_at DATETIME NULL,
+  approval_decision_notice ENUM(\'accepted\') NULL,
+  approval_decision_at DATETIME NULL,
+  invite_code VARCHAR(32) NULL,
+  invite_code_updated_at DATETIME NULL,
+  invite_code_consumed_at DATETIME NULL,
+  invite_code_consumed_by VARCHAR(32) NULL,
+  bind_token_hash CHAR(64) NULL,
+  bind_fingerprint_hash CHAR(64) NULL,
+  bind_app_hash CHAR(64) NULL,
+  bind_ip VARCHAR(45) NULL,
+  last_seen DATETIME NULL,
+  online_status TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_users_username (username)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS rooms (
+  id SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name VARCHAR(80) NOT NULL,
+  description VARCHAR(255) NULL,
+  position SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS announcements (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  admin_id BIGINT UNSIGNED NOT NULL,
+  message VARCHAR(1000) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_announcements_admin (admin_id, created_at),
+  CONSTRAINT fk_announcements_admin FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS messages (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  room_id SMALLINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NULL,
+  announcement_id BIGINT UNSIGNED NULL,
+  type VARCHAR(20) NOT NULL DEFAULT \'text\',
+  content TEXT NULL,
+  image_path VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY idx_messages_room_id (room_id, id),
+  KEY idx_messages_created (created_at),
+  KEY idx_messages_user_created (user_id, created_at),
+  KEY idx_messages_announcement (announcement_id),
+  CONSTRAINT fk_messages_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_messages_announcement FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS message_views (
+  message_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  viewed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (message_id, user_id),
+  KEY idx_message_views_message (message_id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS message_deletions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  message_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  deleted_for_user TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_message_deletions (message_id, user_id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS banned_users (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  reason VARCHAR(500) NOT NULL,
+  banned_until DATETIME NULL,
+  banned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_banned_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS deleted_users_log (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NULL,
+  username VARCHAR(30) NOT NULL,
+  reason VARCHAR(500) NULL,
+  deleted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_deleted_username (username)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS rate_limits (
+  rate_key VARCHAR(191) NOT NULL,
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  window_started_at DATETIME NULL,
+  blocked_until DATETIME NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (rate_key),
+  KEY idx_rate_limits_updated (updated_at)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;'
+    ];
+    foreach ($statements as $sql) {
+        try {
+            $pdo->exec($sql);
+        } catch (PDOException $error) {
+            // 42S01: tablo zaten var (eşzamanlı ilk istek yarışı) — zararsız.
+            if ((string) $error->getCode() !== '42S01') {
+                throw $error;
+            }
+        }
+    }
+
+    // Eski dökümlerde rooms tablosu position sütunu OLMADAN gelir ve
+    // CREATE TABLE IF NOT EXISTS mevcut tabloya dokunmaz. Tohum position'a
+    // yazdığı için eksik sütun her istekte kalıcı 500/503 üretirdi
+    // ("Bağlantı geçici olarak yavaşladı" döngüsünün gerçek nedeni).
+    ensureColumn($pdo, 'rooms', 'position', 'position SMALLINT UNSIGNED NOT NULL DEFAULT 0');
+
+    // Oda kataloğu: TEK doğruluk kaynağı canonicalRoomCatalog(). Dışarıdan
+    // yüklenen SQL yalnızca 15 oda içeriyordu; katalog 20 oda olduğu için
+    // eksik odalar burada tamamlanır (INSERT IGNORE mevcutları ezmez).
+    $rows = [];
+    foreach (canonicalRoomCatalog() as $roomId => $meta) {
+        $rows[] = sprintf(
+            '(%d, %s, %s, %d)',
+            (int) $roomId,
+            $pdo->quote((string) ($meta[0] ?? '')),
+            $pdo->quote((string) ($meta[1] ?? '')),
+            (int) $roomId
+        );
+    }
+    if ($rows !== []) {
+        $pdo->exec(
+            'INSERT IGNORE INTO rooms (id, name, description, position) VALUES ' . implode(', ', $rows)
+        );
+    }
+}
+
 function ensureRuntimeSchema(PDO $pdo): void
 {
     static $checked = false;
     if ($checked) {
         return;
     }
-    // Bildirim altyapısı v16 kısa devresinden bağımsız kurulur; aksi halde
-    // canlı veritabanında push tabloları hiç oluşmaz.
-    ensurePushInfra($pdo);
-    // Uygulama kimliği (app_hash + yasak tipi 'app') aynı nedenle v16
-    // kısa devresinden bağımsız kurulur. Aksi halde canlı şemada kolon
-    // yoktur ve kimlik sorguları 500 üretir.
-    ensureIdentityInfra($pdo);
-    // Platform ayarları (hit ekonomisi kodu) de v16 kısa devresinden
-    // bağımsız kurulur; yoksa ilk istekler tablo arar, 500 üretir.
-    ensurePlatformInfra($pdo);
-    // Şema kontrolü her istekte veritabanına sorulmaz; kısa ömürlü yerel işaret
-    // dosyası sayesinde sorgu maliyeti neredeyse sıfıra iner.
-    $marker = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'asra_schema_v16.flag';
-    if (is_file($marker) && (time() - (int) @filemtime($marker)) < 86400) {
-        $checked = true;
-        return;
-    }
-    $version = $pdo->prepare("SELECT 1 FROM rate_limits WHERE rate_key = 'schema:runtime:v16' LIMIT 1");
-    $version->execute();
-    if ($version->fetchColumn()) {
-        @touch($marker);
+    // Çekirdek tablolar her şeyden önce: aşağıdaki damga sondası rate_limits
+    // tablosuna, kolon yamaları ise users tablosuna soruyor. Boş veritabanında
+    // bunlar yoksa 500 üretir; önce çekirdek şema kurulur.
+    ensureCoreSchema($pdo);
+
+    // Kurulum damgası veritabanındaysa ana kurulum (DDL/ALTER) atlanır.
+    // Kimlik ve platform altyapıları kendi damgalarıyla korunur, bu yüzden
+    // burada da garantilenir.
+    if (schemaStampApplied($pdo, SCHEMA_VERSION_KEY)) {
+        ensureIdentityInfra($pdo);
+        ensurePlatformInfra($pdo);
         $checked = true;
         return;
     }
@@ -773,56 +1006,28 @@ function ensureRuntimeSchema(PDO $pdo): void
          WHERE bi.source_user_id IS NOT NULL AND u.id IS NULL'
     );
 
-    @touch($marker);
-    $pdo->exec("DELETE FROM rate_limits WHERE rate_key LIKE 'schema:runtime:%' AND rate_key <> 'schema:runtime:v16'");
+    // Bozuk/kalıcı kilit bırakmış hız sınırı satırları temizlenir. Eski sürüm
+    // engeli her istekte uzatıyordu; içe aktarılmış veritabanlarında NULL
+    // pencere de kalıcı kilide yol açıyordu. Kurulum bir kez çalıştığı için
+    // bu temizlik siteyi otomatik olarak yeniden erişilebilir yapar.
     $pdo->exec(
-        "INSERT INTO rate_limits (rate_key, attempts, window_started_at, blocked_until)
-         VALUES ('schema:runtime:v16', 0, UTC_TIMESTAMP(), NULL)
-         ON DUPLICATE KEY UPDATE updated_at = UTC_TIMESTAMP()"
+        "DELETE FROM rate_limits
+         WHERE rate_key LIKE 'global_read:%'
+            OR rate_key LIKE 'rate:%'
+            OR (blocked_until IS NOT NULL AND blocked_until > UTC_TIMESTAMP())"
     );
+
+    // Kimlik ve platform altyapısı TABLOLAR OLUŞTUKTAN SONRA kurulur: aksi
+    // hâlde veri göçleri henüz var olmayan tablolara dokunur ve her ilk
+    // istekte "table doesn't exist" uyarısı üretir.
+    ensureIdentityInfra($pdo);
+    ensurePlatformInfra($pdo);
+
+    $pdo->exec("DELETE FROM rate_limits WHERE rate_key LIKE 'schema:runtime:%' AND rate_key <> '" . SCHEMA_VERSION_KEY . "'");
+    markSchemaStamp($pdo, SCHEMA_VERSION_KEY);
     $checked = true;
 }
 
-function ensurePushInfra(PDO $pdo): void
-{
-    static $ready = false;
-    if ($ready) {
-        return;
-    }
-    $marker = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'asra_schema_push_v1.flag';
-    if (is_file($marker) && (time() - (int) @filemtime($marker)) < 86400) {
-        $ready = true;
-        return;
-    }
-    safeSchemaExec(
-        $pdo,
-        "CREATE TABLE IF NOT EXISTS user_push_topics (
-            topic VARCHAR(48) NOT NULL,
-            user_id BIGINT UNSIGNED NOT NULL,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (topic),
-            KEY idx_user_push_topics_user (user_id, updated_at)
-        ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
-        'user_push_topics'
-    );
-    safeSchemaExec(
-        $pdo,
-        "CREATE TABLE IF NOT EXISTS push_events (
-            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            room_id SMALLINT UNSIGNED NOT NULL,
-            room_name VARCHAR(80) NOT NULL,
-            sender_id BIGINT UNSIGNED NOT NULL,
-            preview VARCHAR(200) NOT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            KEY idx_push_events_created (created_at),
-            KEY idx_push_events_sender (sender_id, id)
-        ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
-        'push_events'
-    );
-    @touch($marker);
-    $ready = true;
-}
 
 function clearDeletedAccountWait(PDO $pdo): void
 {
@@ -879,8 +1084,7 @@ function ensureIdentityInfra(PDO $pdo): void
     if ($ready) {
         return;
     }
-    $marker = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'asra_schema_identity_v3.flag';
-    if (is_file($marker) && (time() - (int) @filemtime($marker)) < 86400) {
+    if (schemaStampApplied($pdo, 'schema:identity:v3')) {
         $ready = true;
         return;
     }
@@ -929,7 +1133,7 @@ function ensureIdentityInfra(PDO $pdo): void
     } catch (PDOException $error) {
         error_log('[schema] identifier type check skipped: ' . $error->getMessage());
     }
-    @touch($marker);
+    markSchemaStamp($pdo, 'schema:identity:v3');
     $ready = true;
 }
 
@@ -938,8 +1142,8 @@ function ensureIdentityInfra(PDO $pdo): void
  *
  * ÖNEMLİ: DDL (CREATE TABLE) yalnızca günde bir kez çalışır (marker dosyası).
  * Ücretsiz hostlarda her istekte DDL, CPU kota aşımı ve hesap kilitlemeye
- * yol açar; diğer altyapı fonksiyonlarındaki (ensurePushInfra vb.) marker
- * deseniyle birebir aynı akış izlenir. Hiçbir adımda istek öldürmez.
+ * yol açar; diğer altyapı fonksiyonlarındaki marker deseniyle
+ * birebir aynı akış izlenir. Hiçbir adımda istek öldürmez.
  */
 function ensurePlatformInfra(PDO $pdo): void
 {
@@ -947,8 +1151,7 @@ function ensurePlatformInfra(PDO $pdo): void
     if ($ready) {
         return;
     }
-    $marker = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'asra_schema_platform_v1.flag';
-    if (is_file($marker) && (time() - (int) @filemtime($marker)) < 86400) {
+    if (schemaStampApplied($pdo, 'schema:platform:v1')) {
         $ready = true;
         return;
     }
@@ -962,293 +1165,10 @@ function ensurePlatformInfra(PDO $pdo): void
         ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
         'platform_settings'
     );
-    @touch($marker);
+    markSchemaStamp($pdo, 'schema:platform:v1');
     $ready = true;
 }
 
-function validPushTopic(string $topic): bool
-{
-    return (bool) preg_match('/\Aasra[a-z0-9_-]{8,40}\z/', $topic);
-}
-
-/**
- * ntfy tablo adresi. Üretimde https://ntfy.sh; ortam değişkeniyle test
- * ortamlarında yerel uca yönlendirilebilir (ASRA_NTFY_HOST).
- */
-function ntfyBaseUrl(): string
-{
-    return rtrim(envValue('ASRA_NTFY_HOST', 'https://ntfy.sh'), '/');
-}
-
-function publishNtfy(string $topic, string $title, string $body): void
-{
-    if (!validPushTopic($topic)) {
-        return;
-    }
-    $url = ntfyBaseUrl() . '/' . rawurlencode($topic);
-    $safeTitle = str_replace(["\r", "\n"], '', $title);
-    $headers = [
-        'Title: ' . $safeTitle,
-        'Content-Type: text/plain; charset=utf-8',
-        'Priority: default',
-    ];
-    // Non-blocking: kısa timeout, yanıt beklenmeden kapat
-    if (function_exists('curl_init')) {
-        $handle = curl_init($url);
-        if ($handle === false) {
-            return;
-        }
-        curl_setopt_array($handle, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $body,
-            CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT_MS => 400,
-            CURLOPT_TIMEOUT_MS => 700,
-            CURLOPT_NOSIGNAL => true,
-            CURLOPT_FORBID_REUSE => true,
-            CURLOPT_FRESH_CONNECT => true,
-        ]);
-        // Hata olsa bile sessiz geç
-        @curl_exec($handle);
-        @curl_close($handle);
-        return;
-    }
-    $context = stream_context_create([
-        'http' => [
-            'method' => 'POST',
-            'header' => implode("\r\n", $headers) . "\r\n",
-            'content' => $body,
-            'timeout' => 1,
-            'ignore_errors' => true,
-        ],
-    ]);
-    @file_get_contents($url, false, $context);
-}
-
-function publishNtfyBatch(array $topics, string $title, string $body): void
-{
-    // Toplam 50 konuya kadar tek çoklu-istek dalgasında yayılır (topluluk büyüdükçe kayıp olmasın)
-    $topics = array_slice(array_values(array_unique(array_filter(array_map('strval', $topics), 'validPushTopic'))), 0, 50);
-    if (!$topics) {
-        return;
-    }
-    if (!function_exists('curl_multi_init') || !function_exists('curl_init')) {
-        // cURL multi yoksa toplam bekleme süresini sınırlamak için az sayıda gönder.
-        foreach (array_slice($topics, 0, 2) as $topic) {
-            publishNtfy($topic, $title, $body);
-        }
-        return;
-    }
-
-    $multi = curl_multi_init();
-    $handles = [];
-    $safeTitle = str_replace(["\r", "\n"], '', $title);
-    foreach ($topics as $topic) {
-        $handle = curl_init(ntfyBaseUrl() . '/' . rawurlencode($topic));
-        if ($handle === false) continue;
-        curl_setopt_array($handle, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $body,
-            CURLOPT_HTTPHEADER => ['Title: ' . $safeTitle, 'Content-Type: text/plain; charset=utf-8', 'Priority: default'],
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT_MS => 250,
-            CURLOPT_TIMEOUT_MS => 600,
-            CURLOPT_NOSIGNAL => true,
-            CURLOPT_FORBID_REUSE => true,
-            CURLOPT_FRESH_CONNECT => true,
-        ]);
-        curl_multi_add_handle($multi, $handle);
-        $handles[] = $handle;
-    }
-
-    $deadline = microtime(true) + 0.8;
-    try {
-        do {
-            $status = curl_multi_exec($multi, $running);
-            if ($running > 0 && microtime(true) < $deadline) {
-                $selected = curl_multi_select($multi, 0.05);
-                if ($selected === -1) usleep(10000);
-            }
-        } while ($running > 0 && $status === CURLM_OK && microtime(true) < $deadline);
-    } finally {
-        foreach ($handles as $handle) {
-            curl_multi_remove_handle($multi, $handle);
-            curl_close($handle);
-        }
-        curl_multi_close($multi);
-    }
-}
-
-function notifyPushRecipients(PDO $pdo, int $senderId, int $roomId, string $roomName, string $preview, array $extra = []): void
-{
-    try {
-        ensurePushInfra($pdo);
-        if (shouldRunMaintenance($pdo, 'push_events_cleanup', 600)) {
-            $pdo->exec("DELETE FROM push_events WHERE created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 12 HOUR)");
-        }
-        $roomName = function_exists('mb_substr') ? mb_substr($roomName, 0, 80, 'UTF-8') : substr($roomName, 0, 80);
-        $preview = trim($preview);
-        if ($preview === '') {
-            $preview = 'Yeni bir kişi mesaj yazdı';
-        }
-        $preview = function_exists('mb_substr') ? mb_substr($preview, 0, 160, 'UTF-8') : substr($preview, 0, 160);
-        $insert = $pdo->prepare(
-            'INSERT INTO push_events (room_id, room_name, sender_id, preview, created_at)
-             VALUES (?, ?, ?, ?, UTC_TIMESTAMP())'
-        );
-        $insert->execute([$roomId, $roomName, $senderId, $preview]);
-        $payloadData = [
-            'rn' => $roomName,
-            'rid' => $roomId,
-            'sid' => $senderId,
-            'tx' => $preview,
-        ];
-        // $extra: istemcinin sunucuya istek ATMADAN yerel render edebilmesi
-        // icin mesaj detaylari (mid, u, t, full, img, sys). ntfy 4000 bayt
-        // limiti nedeniyle 'full' bayt-guvenli kirpmistir.
-        foreach ($extra as $key => $value) {
-            if (is_scalar($value)) {
-                $payloadData[(string) $key] = $value;
-            }
-        }
-        $payload = json_encode($payloadData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if (!is_string($payload) || $payload === '') {
-            return;
-        }
-        $topics = $pdo->prepare(
-            'SELECT topic FROM user_push_topics
-             WHERE user_id <> ? AND updated_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 DAY)
-             LIMIT 50'
-        );
-        $topics->execute([$senderId]);
-        publishNtfyBatch($topics->fetchAll(PDO::FETCH_COLUMN) ?: [], $roomName, $payload);
-    } catch (Throwable $error) {
-        error_log('[push] notify skipped: ' . $error->getMessage());
-    }
-}
-
-/**
- * Onay kararı (kabul/red) bildirimini ilgili KULLANICININ kendi ntfy
- * konusuyla birebir iletir. APK güncellemesi gerektirmez: mevcut uygulama
- * kendi konusu üzerindeki düz metin mesajları (JSON olmayan) başlık + gövde
- * olarak doğrudan bildirim gösterir; gönderici kendi olmadığı için
- * kendisini atlama kuralına takılmaz.
- *
- * Fail-safe: konu yoksa sessizce atlanır; hata asla onay kararını bozmaz.
- * Gövde düz metindir (JSON değil) — böylece istemcide senderId 0 kalır.
- */
-function notifyApprovalDecision(PDO $pdo, int $userId, string $decision): void
-{
-    if ($userId <= 0 || !in_array($decision, ['accept', 'reject'], true)) {
-        return;
-    }
-    try {
-        ensurePushInfra($pdo);
-        $stmt = $pdo->prepare('SELECT topic FROM user_push_topics WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1');
-        $stmt->execute([$userId]);
-        $topic = $stmt->fetchColumn();
-        if (!is_string($topic) || !validPushTopic($topic)) {
-            return; // uygulama push kaydetmemiş; zararsız atla
-        }
-        if ($decision === 'accept') {
-            publishNtfy($topic, 'Kabul Edildin', 'Başvurun kabul edildi, ASRA topluluğuna hoş geldin! Uygulamayı açarak sohbetmeye başlayabilirsin.');
-        } else {
-            publishNtfy($topic, 'Başvuru Reddedildi', 'Başvurun yönetici tarafından reddedildi. Yeni başvuru gönderebilmek için 5 gün beklemelisin.');
-        }
-    } catch (Throwable $error) {
-        error_log('[approval] push notify skipped: ' . $error->getMessage());
-    }
-}
-
-function actionRegisterPush(PDO $pdo, array $data): never
-{
-    $user = requireUser($pdo);
-    $topic = strtolower(cleanText($data['topic'] ?? '', 'Bildirim konusu', 48));
-    if (!validPushTopic($topic)) {
-        throw new ApiError(422, 'INVALID_TOPIC', 'Bildirim konusu geçersiz.');
-    }
-    ensurePushInfra($pdo);
-    $stmt = $pdo->prepare(
-        'INSERT INTO user_push_topics (topic, user_id, updated_at)
-         VALUES (?, ?, UTC_TIMESTAMP())
-         ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), updated_at = UTC_TIMESTAMP()'
-    );
-    $stmt->execute([$topic, (int) $user['id']]);
-    respond(['message' => 'Bildirim konusu kaydedildi.', 'topic' => $topic]);
-}
-
-function actionPollPush(PDO $pdo): never
-{
-    requireMethod('GET');
-    $topic = strtolower(trim((string) ($_GET['topic'] ?? '')));
-    if (!validPushTopic($topic)) {
-        throw new ApiError(422, 'INVALID_TOPIC', 'Bildirim konusu geçersiz.');
-    }
-    consumeRequestLimit($pdo, rateKey('poll_push', clientIp() . '|' . $topic), 120, 60);
-    ensurePushInfra($pdo);
-    $owner = $pdo->prepare('SELECT user_id FROM user_push_topics WHERE topic = ? LIMIT 1');
-    $owner->execute([$topic]);
-    $userId = (int) ($owner->fetchColumn() ?: 0);
-    if ($userId <= 0) {
-        respond(['events' => []]);
-    }
-    $since = filter_var($_GET['since'] ?? 0, FILTER_VALIDATE_INT);
-    if ($since === false || $since < 0) {
-        $since = 0;
-    }
-    $stmt = $pdo->prepare(
-        'SELECT id, room_id, room_name, sender_id, preview
-         FROM push_events
-         WHERE id > ? AND sender_id <> ?
-           AND created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 12 HOUR)
-         ORDER BY id ASC
-         LIMIT 30'
-    );
-    $stmt->execute([$since, $userId]);
-    $events = [];
-    foreach ($stmt->fetchAll() ?: [] as $row) {
-        $events[] = [
-            'id' => (int) $row['id'],
-            'rid' => (int) $row['room_id'],
-            'rn' => (string) $row['room_name'],
-            'sid' => (int) $row['sender_id'],
-            'tx' => (string) $row['preview'],
-        ];
-    }
-    respond(['events' => $events]);
-}
-
-
-function maybeRegisterAppPushTopic(PDO $pdo, int $userId): void
-{
-    if ($userId <= 0) {
-        return;
-    }
-    $topic = strtolower(trim((string) ($_SERVER['HTTP_X_ASRA_PUSH_TOPIC'] ?? '')));
-    if (!validPushTopic($topic)) {
-        return;
-    }
-    $topicHash = hash('sha256', $topic);
-    $cached = $_SESSION['push_topic_registration'] ?? null;
-    if (is_array($cached)
-        && hash_equals((string) ($cached['hash'] ?? ''), $topicHash)
-        && (int) ($cached['at'] ?? 0) > time() - 3600) {
-        return;
-    }
-    try {
-        ensurePushInfra($pdo);
-        $stmt = $pdo->prepare(
-            'INSERT INTO user_push_topics (topic, user_id, updated_at)
-             VALUES (?, ?, UTC_TIMESTAMP())
-             ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), updated_at = UTC_TIMESTAMP()'
-        );
-        $stmt->execute([$topic, $userId]);
-        $_SESSION['push_topic_registration'] = ['hash' => $topicHash, 'at' => time()];
-    } catch (Throwable $error) {
-        error_log('[push] auto-register skipped: ' . $error->getMessage());
-    }
-}
 
 function sessionCookieOptions(): array
 {
@@ -1447,7 +1367,7 @@ function respond(array $payload = [], int $status = 200): never
 
 function closeSessionEarlyForReads(string $action): void
 {
-    static $readActions = ['session','get_rooms','get_messages','get_message_views','get_user_profile','get_my_invite_code','admin_search_users','admin_pending_approvals','admin_access_code_status','get_economy','get_quests','heartbeat','poll_push','get_banned_info','get_media','media'];
+    static $readActions = ['session','get_rooms','get_messages','get_message_views','get_user_profile','get_my_invite_code','admin_search_users','admin_pending_approvals','admin_access_code_status','get_economy','get_quests','heartbeat','get_banned_info','get_media','media'];
     if (!in_array($action, $readActions, true)) return;
     if (session_status() === PHP_SESSION_ACTIVE) {
         try { session_write_close(); } catch (Throwable $e) {}
@@ -2091,17 +2011,35 @@ function consumeGlobalReadBudget(PDO $pdo, string $bucket, int $maxRequests, int
 {
     // Anahtar, az sayıda genel kovası temsil eder; kimlik bazlı değildir.
     $key = 'global_read:' . hash('sha256', $bucket);
+    // ONARILAN İKİ KUSUR:
+    //  1) Kilit kendini uzatıyordu: eski ifade her istekte
+    //     `blocked_until = NOW + cooldown` yazıyordu. Engel sürerken gelen her
+    //     istek (istemcinin 60 sn'lik nabız turu bile) engeli 90 sn daha
+    //     ileri atıyordu; yani kilit pratikte HİÇ bitmiyordu ve TEK bir bozuk
+    //     istemci TÜM kullanıcıları kalıcı olarak dışarıda bırakıyordu.
+    //  2) `window_started_at` NULL/bozuk olduğunda (ör. SQL ile içe aktarılmış
+    //     eski satır) pencere ASLA sıfırlanmıyordu: sayaç sonsuza dek büyüyor,
+    //     koşul her zaman doğru oluyor ve site kalıcı olarak kilitleniyordu.
+    //
+    // Yeni davranış: pencere dolduğunda sayaç VE engel birlikte sıfırlanır;
+    // engel sürerken sayaç artmaz ve engel UZATILMAZ; NULL pencere "süresi
+    // dolmuş" sayılır. Atamalar soldan sağa değerlendirildiği için sıra
+    // önemlidir: attempts -> blocked_until -> window_started_at.
+    $expired = 'window_started_at IS NULL OR window_started_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? SECOND)';
+    $blocked = 'blocked_until IS NOT NULL AND blocked_until > UTC_TIMESTAMP()';
     $stmt = $pdo->prepare(
         'INSERT INTO rate_limits (rate_key, attempts, window_started_at, blocked_until)
          VALUES (?, 1, UTC_TIMESTAMP(), NULL)
          ON DUPLICATE KEY UPDATE
-            attempts = IF(window_started_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? SECOND), 1, attempts + 1),
-            window_started_at = IF(window_started_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? SECOND), UTC_TIMESTAMP(), window_started_at),
-            blocked_until = IF(attempts >= ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND), blocked_until)'
+            attempts = IF(' . $expired . ', 1, IF(' . $blocked . ', attempts, attempts + 1)),
+            blocked_until = IF(' . $expired . ', NULL,
+                IF(' . $blocked . ', blocked_until,
+                   IF(attempts >= ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND), NULL))),
+            window_started_at = IF(' . $expired . ', UTC_TIMESTAMP(), window_started_at)'
     );
-    // 5 placeholder: key, windowSeconds (attempts), windowSeconds (window_started_at),
-    // maxRequests (blocked flag), cooldownSeconds (block sure).
-    $stmt->execute([$key, $windowSeconds, $windowSeconds, $maxRequests, $cooldownSeconds]);
+    // 7 placeholder: key; (attempts) windowSeconds; (blocked_until) windowSeconds,
+    // maxRequests, cooldownSeconds; (window_started_at) windowSeconds.
+    $stmt->execute([$key, $windowSeconds, $windowSeconds, $maxRequests, $cooldownSeconds, $windowSeconds]);
 
     $status = $pdo->prepare('SELECT attempts, window_started_at, blocked_until FROM rate_limits WHERE rate_key = ?');
     $status->execute([$key]);
@@ -2618,7 +2556,6 @@ function requireUser(PDO $pdo): array
         ]);
     }
 
-    maybeRegisterAppPushTopic($pdo, (int) $userId);
 
     if (time() - (int) ($_SESSION['last_touch'] ?? 0) >= 30) {
         assertDeviceMayUseAccount($pdo, (int) $userId);
@@ -3552,21 +3489,6 @@ function actionSendMessage(PDO $pdo, array $data): never
         safeDeleteImage($imagePath);
         throw $error;
     }
-    $preview = $content !== '' ? $content : 'Yeni bir görsel gönderildi';
-    // Yerel render paketi: istemci sunucuya istek atmadan mesajı ekrana basar
-    // (sıfır host isteği). ntfy 4000 bayt limiti için tam metin byte-güvenli
-    // kırpılır; bir sonraki gerçek istek resmi içerikle değiştirir.
-    $full = $content !== '' ? $content : '';
-    if (function_exists('mb_strcut') && function_exists('mb_strlen') && mb_strlen($full, 'UTF-8') > 2800) {
-        $full = (string) mb_strcut($full, 0, 3400, 'UTF-8');
-    }
-    notifyPushRecipients($pdo, (int) $user['id'], $roomId, (string) $room['name'], $preview, [
-        'mid' => $messageId,
-        'u' => (string) $user['username'],
-        't' => gmdate(DateTimeInterface::ATOM),
-        'full' => $full,
-        'img' => $imagePath,
-    ]);
     respond(['message' => 'Mesaj gönderildi.', 'message_id' => $messageId, 'image_path' => $imagePath], 201);
 }
 
@@ -4061,10 +3983,6 @@ function actionAdminSendAnnouncement(PDO $pdo, array $data): never
             $pdo->rollBack();
         }
         throw $error;
-    }
-    foreach ($validRoomIds as $roomId) {
-        $room = roomExists($pdo, $roomId);
-        notifyPushRecipients($pdo, (int) $admin['id'], $roomId, (string) $room['name'], 'DUYURU: ' . $message, ['sys' => 1]);
     }
     respond([
         'message' => 'Duyuru seçilen odalara gönderildi.',
@@ -5110,6 +5028,61 @@ function formatUtc(?string $value): ?string
     return $timestamp === false ? null : gmdate(DateTimeInterface::ATOM, $timestamp);
 }
 
+/**
+ * Tanı ucu: "site açılmıyor" durumunu TEK istekte teşhis eder.
+ *
+ * Tarayıcıdan /auth.php?action=health açıldığında sunucunun gerçekten JSON
+ * üretip üretmediğini, veritabanına bağlanıp bağlanmadığını ve şemanın kurulu
+ * olup olmadığını gösterir. Barındırma sağlayıcısının HTML hata/koruma
+ * sayfası ile uygulamanın kendi hatası bu uçla ayırt edilir.
+ *
+ * Güvenlik: yalnızca okunur bilgi döner. Parola, kullanıcı adı ve oturum
+ * verisi SIZMAZ; DSN'den yalnızca sunucu adı ve veritabanı adı gösterilir.
+ * Kimlik doğrulama istemez, çünkü amacı tam da giriş yapılamayan durumu
+ * teşhis etmektir. Bu yüzden tüm hız sınırlarının ÖNÜNDE çalışır.
+ */
+function actionHealth(): never
+{
+    $dsn = envValue(
+        'ASRA_DB_DSN',
+        'mysql:host=sql303.infinityfree.com;port=3306;dbname=if0_42805855_asra;charset=utf8mb4'
+    );
+    $report = [
+        'ok' => true,
+        'php' => PHP_VERSION,
+        'utc' => gmdate('c'),
+        'db_host' => preg_match('/host=([^;]+)/', $dsn, $m) ? $m[1] : null,
+        'db_name' => preg_match('/dbname=([^;]+)/', $dsn, $m) ? $m[1] : null,
+        'db_connected' => false,
+        'tables' => 0,
+        'rooms' => 0,
+        'schema_stamps' => [],
+    ];
+    try {
+        // db() yerine DOĞRUDAN bağlantı denenir: db() geçici hataları
+        // "Sunucu şu anda yoğun" mesajına çevirir, oysa teşhis için gerçek
+        // neden (erişim reddi, çözümlenemeyen sunucu adı, yanlış veritabanı)
+        // görünmelidir.
+        $pdo = new PDO($dsn, envValue('ASRA_DB_USER', 'if0_42805855'), envValue('ASRA_DB_PASSWORD', 'SDspuzgAn17CUg'), [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_TIMEOUT => 8,
+        ]);
+        $report['db_connected'] = true;
+        $report['tables'] = (int) $pdo->query(
+            'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()'
+        )->fetchColumn();
+        $report['rooms'] = (int) $pdo->query('SELECT COUNT(*) FROM rooms')->fetchColumn();
+        $stamps = $pdo->prepare("SELECT rate_key FROM rate_limits WHERE rate_key LIKE 'schema:%' ORDER BY rate_key");
+        $stamps->execute();
+        $report['schema_stamps'] = $stamps->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Throwable $error) {
+        $report['ok'] = false;
+        $report['db_error'] = $error->getMessage();
+    }
+    respond($report, $report['ok'] ? 200 : 503);
+}
+
 function actionAdminPendingApprovals(PDO $pdo): never
 {
     requireAdmin($pdo);
@@ -5182,10 +5155,6 @@ function actionAdminDecideApproval(PDO $pdo, array $data): never
                 createApprovedWelcomeMessage($database, (string) $target['username']);
                 return ['already_decided' => false, 'username' => (string) $target['username']];
             });
-            if (!$result['already_decided']) {
-                // Kullanıcıya birebir push (ntfy konusu üzerinden); hata karar akışını bozmaz.
-                notifyApprovalDecision($pdo, $userId, 'accept');
-            }
             $response = [
                 'message' => $result['already_decided'] ? 'Başvuru daha önce kabul edilmiş.' : 'Başvuru kabul edildi.',
                 'already_decided' => (bool) $result['already_decided'],
@@ -5204,8 +5173,6 @@ function actionAdminDecideApproval(PDO $pdo, array $data): never
                 }
                 rememberApprovalBlockForUser($pdo, $userId, $target['username'], 'rejected', 'Reddedildin. Yeni başvuru göndermeden önce 5 gün beklemelisin.', 5);
                 deleteUserPermanently($pdo, $userId, 'Onay başvurusu yönetici tarafından reddedildi.', 'pending');
-                // Hesap silinse de push konusu kalır; kullanıcı karar bildirimini alır.
-                notifyApprovalDecision($pdo, $userId, 'reject');
                 $response = ['message' => 'Başvuru reddedildi ve hesap silindi.', 'already_decided' => false, 'user_id' => $userId];
             }
         }
@@ -5306,12 +5273,17 @@ function dispatch(): never
     sendSecurityHeaders();
     $action = strtolower(trim((string) ($_GET['action'] ?? $_POST['action'] ?? 'session')));
     $postActions = [
-        'check_invite_code', 'register', 'login', 'submit_approval', 'logout', 'send_message', 'register_push', 'delete_message', 'undo_delete_message', 'finalize_message_delete',
+        'check_invite_code', 'register', 'login', 'submit_approval', 'logout', 'send_message', 'delete_message', 'undo_delete_message', 'finalize_message_delete',
         'update_profile', 'update_profile_photo', 'delete_profile_photo', 'update_settings', 'admin_login', 'admin_ban_user', 'admin_unban_user',
         'admin_delete_user', 'admin_change_user_password', 'admin_decide_approval', 'admin_adjust_coins', 'admin_reset_invite_code', 'admin_set_access_code', 'admin_send_announcement', 'admin_delete_announcement', 'delete_own_account', 'ai_chat', 'buy_frame', 'equip_frame', 'claim_quest', 'claim_game_reward',
     ];
     $isPostAction = in_array($action, $postActions, true);
     requireMethod($isPostAction ? 'POST' : 'GET');
+    // Tanı ucu her şeyden önce: veritabanına bağlanılamadığında ya da
+    // sağlayıcı HTML koruma sayfası döndürdüğünde bile JSON üretmelidir.
+    if ($action === 'health') {
+        actionHealth();
+    }
     if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST') {
         requireCsrf();
     }
@@ -5332,9 +5304,9 @@ function dispatch(): never
     // Retry-After döner, web istemcisi bu başlığa uyarak geri çekilir.
     // (get_media/media hariç: onlar için sessionRateGuard yeterli ve bu uç
     // zaten ağır görsel taşıyabilir.)
-    if (in_array($action, ['get_rooms', 'get_messages', 'get_message_views', 'get_user_profile', 'poll_push', 'heartbeat', 'session', 'get_banned_info'], true)) {
+    if (in_array($action, ['get_rooms', 'get_messages', 'get_message_views', 'get_user_profile', 'heartbeat', 'session', 'get_banned_info'], true)) {
         // Ortam değişkeniyle yükseltilebilir; koruma tavanı her zaman uygulanır.
-        $hotReadsMax = min(max(20, (int) (envValue('ASRA_HOT_READS_PER_MIN', (string) HIT_PROTECTION_MAX_REQUESTS))), HIT_PROTECTION_MAX_REQUESTS);
+        $hotReadsMax = min(max(20, (int) (envValue('ASRA_HOT_READS_PER_MIN', '180'))), HIT_PROTECTION_MAX_REQUESTS);
         $hotReadsWindow = max(15, (int) (envValue('ASRA_HOT_READS_WINDOW', '60')));
         $hotReadsCooldown = max(5, (int) (envValue('ASRA_HOT_READS_COOLDOWN', (string) HIT_PROTECTION_COOLDOWN_SECONDS)));
         consumeGlobalReadBudget($pdo, 'hot_reads', $hotReadsMax, $hotReadsWindow, $hotReadsCooldown);
@@ -5345,11 +5317,11 @@ function dispatch(): never
     } else {
         // Diğer okuma uçları için de kilidi erken bırak (requireUser sonrası DB işlemleri kilidi tutmasın)
         // closeSessionEarlyForReads çağrısı dispatch sonrası da yapılacak ama burada ön kontrol
-        if (in_array($action, ['get_rooms','get_messages','get_message_views','get_user_profile','get_my_invite_code','admin_search_users','admin_pending_approvals','get_economy','get_quests','heartbeat','session','poll_push','get_banned_info'], true) && session_status() === PHP_SESSION_ACTIVE) {
+        if (in_array($action, ['get_rooms','get_messages','get_message_views','get_user_profile','get_my_invite_code','admin_search_users','admin_pending_approvals','get_economy','get_quests','heartbeat','session','get_banned_info'], true) && session_status() === PHP_SESSION_ACTIVE) {
             // User doğrulandıktan sonra kapatılacak; burada sadece session varlığını koru
         }
     }
-    if (!in_array($action, ['logout', 'get_banned_info', 'poll_push'], true)) {
+    if (!in_array($action, ['logout', 'get_banned_info'], true)) {
         $identityBlock = activeIdentityBlock($pdo);
         if ($identityBlock !== null) {
             throw new ApiError(403, 'ACCOUNT_BANNED', 'Bu cihazın ve ağ kimliğinin platforma erişimi engellenmiştir.', [
@@ -5370,8 +5342,6 @@ function dispatch(): never
         'get_rooms' => actionGetRooms($pdo),
         'get_messages' => actionGetMessages($pdo),
         'send_message' => actionSendMessage($pdo, $data),
-        'register_push' => actionRegisterPush($pdo, $data),
-        'poll_push' => actionPollPush($pdo),
         'delete_message' => actionDeleteMessage($pdo, $data),
         'undo_delete_message' => actionUndoDeleteMessage($pdo, $data),
         'finalize_message_delete' => actionFinalizeMessageDelete($pdo, $data),

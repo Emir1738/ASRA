@@ -5,13 +5,18 @@
 #   - davet/kayıt/giriş akışı
 #   - ERIŞİM KODU: açıkken sınırsız giriş (2 farklı cihaz + 2 farklı kayıt),
 #     kapatınca kod ölür, tekrar açılınca YENİ kod üretilir
-#   - HİT KORUMASI HER ZAMAN AÇIK: kod açık da kapalı da bütçe 60/dk
+#   - HİT KORUMASI HER ZAMAN AÇIK: kod açık da kapalı da bütçe 60/dk (testte)
 #   - hatırla-token ile oturum kurtarma (güncelleme senaryosu)
 #   - 12-aylık inaktiflik penceresi, CSRF koruması
 # ============================================================================
 set -u
 BASE="http://127.0.0.1:8090/auth.php"
-TDIR="/home/user/projects/ASRA/_tests/run"
+# Yol BETİĞİN KENDİ KONUMUNDAN türetilir: sabit yol yazılırsa test, düzenlenen
+# kopyayı değil başka bir kopyayı ölçer (bu hata yaşandı — 53 doğrulama
+# orijinal kod üzerinde koşmuştu).
+SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SDIR/.." && pwd)"
+TDIR="$SDIR/run"
 rm -rf "$TDIR"; mkdir -p "$TDIR"
 
 PASS=0; FAIL=0
@@ -36,7 +41,6 @@ get_cookie() { awk -v name="$2" '$6==name {print $7}' "$1" | tail -1; }
 sql() { sudo mysql -N asra_test -e "$1"; }
 
 echo "== 0) Test izolasyonu: ortam sıfırdan kurulur =="
-SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "$SDIR/reset_env.sh"
 sql "SELECT 1" > /dev/null && ok "veritabanı sıfırdan kuruldu" || bad "veritabanı kurulamadı"
 
@@ -75,7 +79,11 @@ check_eq "hit koruma bayrağı (kod kapalıyken bile) true" "True" "$(jget "$TDI
 echo "== 6) Oda listesi + mesaj =="
 curl -s -b "$TDIR/jar_main.txt" "$BASE?action=get_rooms" -o "$TDIR/r.json"
 ROOMCOUNT=$(python3 -c "import json;print(len(json.load(open('$TDIR/r.json'))['rooms']))" 2>/dev/null || echo HATA)
-check_eq "15 oda" "15" "$ROOMCOUNT"
+# Beklenen sayı SABİT yazılmaz: auth.php'deki canonicalRoomCatalog() tek
+# doğruluk kaynağıdır ve ensureCoreSchema() bu kataloğu veritabanına tohumlar.
+# Sayı kaynaktan türetilir ki katalog büyüyünce test eskimesin.
+EXPECTED_ROOMS=$(awk '/function canonicalRoomCatalog/,/^}/' "$ROOT/asra-site-fix/auth.php" | grep -cE "^[[:space:]]+[0-9]+ =>")
+check_eq "oda kataloğu tam ($EXPECTED_ROOMS oda)" "$EXPECTED_ROOMS" "$ROOMCOUNT"
 post "$TDIR/jar_main.txt" "$CSRF" send_message '{"room_id":1,"message":"E2E test mesajı"}'
 check_eq "mesaj gönderildi" "True" "$(jget "$TDIR/r.json" '$.ok')"
 
@@ -199,7 +207,8 @@ check_eq "farklı kişi + farklı ad (aynı UA) kayıt SERBEST" "True" "$(jget "
 sql "UPDATE users SET approval_status='approved' WHERE username='rejuser_other'" > /dev/null
 
 echo "== 11) HİT KORUMASI HER ZAMAN AÇIK =="
-# 4 test kullanıcısı (kopya) — kod AÇIKKEN bile bütçe 60/dk
+# 4 test kullanıcısı (kopya). Test sunucusu ASRA_HOT_READS_PER_MIN=60 ile
+# çalışır (run-tests.sh); üretim varsayılanı 180/dk.
 for i in 2 3 4 5; do
   sql "INSERT INTO users (username, password_hash, avatar_color, approval_status, online_status, last_seen)
        SELECT 'hammer$i', password_hash, avatar_color, 'approved', 0, UTC_TIMESTAMP() FROM users WHERE username='testuser1'" > /dev/null
@@ -272,7 +281,7 @@ sql "INSERT INTO users (username, password_hash, avatar_color, approval_status, 
      VALUES ('purge_6m','x','c1','approved',0,DATE_SUB(UTC_TIMESTAMP(), INTERVAL 6 MONTH), DATE_SUB(UTC_TIMESTAMP(), INTERVAL 8 MONTH))" > /dev/null
 sql "INSERT INTO users (username, password_hash, avatar_color, approval_status, online_status, last_seen, created_at)
      VALUES ('purge_13m','x','c1','approved',0,DATE_SUB(UTC_TIMESTAMP(), INTERVAL 13 MONTH), DATE_SUB(UTC_TIMESTAMP(), INTERVAL 14 MONTH))" > /dev/null
-( cd /home/user/projects/ASRA/asra-site-fix && \
+( cd "$ROOT/asra-site-fix" && \
   ASRA_DB_DSN='mysql:host=127.0.0.1;port=3306;dbname=asra_test;charset=utf8mb4' ASRA_DB_USER='asra' ASRA_DB_PASSWORD='asra_test_pw' php auth.php cleanup > /dev/null 2>&1 )
 check_eq "6 ay pasif hesap KORUNDU" "1" "$(sql "SELECT COUNT(*) FROM users WHERE username='purge_6m'")"
 check_eq "13 ay pasif hesap arındırıldı" "1" "$(sql "SELECT COUNT(*) FROM deleted_users_log WHERE username='purge_13m'")"

@@ -6,9 +6,8 @@ import java.util.UUID
 
 object AsraIdentity {
     const val HEADER_NAME = "X-Asra-Device-Id"
-    const val PUSH_TOPIC_HEADER = "X-Asra-Push-Topic"
     const val COOKIE_NAME = "ASRA_APP_DEVICE"
-    const val SITE_ORIGIN = "https://asra.freedev.app"
+    const val SITE_ORIGIN = "https://asra.42web.io"
 
     private const val PREFS = "asra_identity"
     private const val KEY_DEVICE = "device_id"

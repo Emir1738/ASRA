@@ -79,14 +79,11 @@ class MainActivity : Activity() {
     private var pendingRoomId: Int = 0
 
     private lateinit var deviceId: String
-    private lateinit var notifier: AsraNotifier
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         deviceId = AsraIdentity.deviceId(this)
-        notifier = AsraNotifier(this)
-        notifier.ensureChannel()
         AsraIdentity.installSiteCookie(this)
         // Güncelleme/temizlik sonrası silinen oturum çerezlerini WebView'e geri yaz
         AsraSession.restoreToWebView(this)
@@ -108,9 +105,6 @@ class MainActivity : Activity() {
 
         attachWebView(savedInstanceState)
         activityVisible = true
-        AsraWatch.appVisible = true
-        requestNotificationPermission()
-        AsraWatch.sync(this)
         startCookieSync()
     }
 
@@ -149,12 +143,8 @@ class MainActivity : Activity() {
         view.removeJavascriptInterface("AsraNative")
         view.addJavascriptInterface(
             AsraBridge(
-                context = applicationContext,
                 identity = deviceId,
-                notifier = notifier,
-                onOpenRoom = { openRoomInSite(it) },
-                isAppVisible = { activityVisible },
-                requestNotifyPermission = { requestNotificationPermission() }
+                onOpenRoom = { openRoomInSite(it) }
             ),
             "AsraNative"
         )
@@ -170,11 +160,6 @@ class MainActivity : Activity() {
         webContainer.removeAllViews()
         webContainer.addView(view)
         webView = view
-        // Push mimarisi: ntfy olayı gelince WebView'e anında ilet (yoklama yok)
-        AsraBus.webPush = { payload ->
-            val escaped = org.json.JSONObject.quote(payload)
-            view.evaluateJavascript("window.__asraPush && window.__asraPush($escaped);", null)
-        }
 
         val restored = savedInstanceState?.let { view.restoreState(it) }
         if (restored != null && restored.size > 0) {
@@ -185,7 +170,7 @@ class MainActivity : Activity() {
                 view.clearCache(true)
                 CookieManager.getInstance().flush()
             } catch (_: Exception) {}
-            val bustUrl = START_URL + (if (START_URL.contains("?")) "&" else "?") + "_v=1.5.7_" + System.currentTimeMillis()
+            val bustUrl = START_URL + (if (START_URL.contains("?")) "&" else "?") + "_v=1.6.0_" + System.currentTimeMillis()
             view.loadUrl(bustUrl)
         }
     }
@@ -258,18 +243,6 @@ class MainActivity : Activity() {
 
     private fun hideError() {
         errorOverlay.visibility = View.GONE
-    }
-
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT < 33) {
-            AsraWatch.sync(this)
-            return
-        }
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            AsraWatch.sync(this)
-            return
-        }
-        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFY)
     }
 
     private val cookieSync = object : Runnable {
@@ -358,25 +331,16 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         activityVisible = false
-        AsraWatch.appVisible = false
         CookieManager.getInstance().flush()
         AsraSession.persist(this)
-        AsraWatch.startEngine(this)
-        AsraWatch.schedule(this)
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
         activityVisible = true
-        AsraWatch.appVisible = true
         webView?.onResume()
         AsraSession.persist(this)
-        if (AsraWatch.canNotify(this)) {
-            AsraWatch.onNotificationsReady(this)
-        } else {
-            AsraWatch.sync(this)
-        }
     }
 
     override fun onDestroy() {
@@ -386,11 +350,7 @@ class MainActivity : Activity() {
         hideCustomView()
         CookieManager.getInstance().flush()
         AsraSession.persist(this)
-        AsraWatch.sync(this)
-        AsraWatch.startEngine(this)
-        AsraWatch.schedule(this)
         val view = webView
-        AsraBus.webPush = null
         webView = null
         if (view != null) {
             webContainer.removeView(view)
@@ -402,7 +362,6 @@ class MainActivity : Activity() {
             view.destroy()
         }
         mainHandler.removeCallbacks(cookieSync)
-        AsraWatch.schedule(this)
         super.onDestroy()
     }
 
@@ -554,13 +513,6 @@ class MainActivity : Activity() {
                 startChooserIntents(pendingCaptureOnly, accept, pendingAllowMultiple)
             }
             REQ_WEB_PERM -> resolveWebPermission()
-            REQ_NOTIFY -> {
-                if (AsraWatch.canNotify(this)) {
-                    AsraWatch.onNotificationsReady(this)
-                } else {
-                    AsraWatch.sync(this)
-                }
-            }
         }
     }
 
@@ -724,7 +676,6 @@ class MainActivity : Activity() {
 
         override fun onPageFinished(view: WebView, url: String?) {
             CookieManager.getInstance().flush()
-            AsraWatch.sync(this@MainActivity)
             injectBridge(view)
             if (!pageHadError && errorOverlay.visibility == View.VISIBLE) {
                 hideError()
@@ -958,11 +909,10 @@ class MainActivity : Activity() {
 
     companion object {
         const val EXTRA_ROOM_ID = "asra_room_id"
-        private const val START_URL = "https://asra.freedev.app" // cache-bust ile her açılışta güncel sürüm
+        private const val START_URL = "https://asra.42web.io" // cache-bust ile her açılışta güncel sürüm
         private const val REQ_FILE = 4101
         private const val REQ_CAMERA = 4102
         private const val REQ_WEB_PERM = 4103
-        private const val REQ_NOTIFY = 4104
         private const val WEBVIEW_ID = 0x51A1001
     }
 }

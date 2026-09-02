@@ -60,6 +60,29 @@ Options -Indexes
 ServerSignature Off
 
 # ---------------------------------------------------------------------------
+# 3b) Gizli anahtar / yapılandırma dosyaları ASLA webden okunamaz
+#
+#     Belge köküne yanlışlıkla bırakılan .json / .pem / .key dosyaları
+#     (servis hesabı anahtarı, yedek, döküm) internette bir kez görünürse
+#     geri alınamaz. Sitede tarayıcıya sunulan hiçbir .json dosyası
+#     olmadığı için bu uzantıların toptan kapatılması güvenlidir.
+#     Gizli dosyaları yine de belge kökü DIŞINDA tutmak en doğrusudur.
+# ---------------------------------------------------------------------------
+<IfModule mod_authz_core.c>
+  # Apache 2.4+
+  <FilesMatch "\.(json|pem|key)$">
+    Require all denied
+  </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+  # Apache 2.2
+  <FilesMatch "\.(json|pem|key)$">
+    Order allow,deny
+    Deny from all
+  </FilesMatch>
+</IfModule>
+
+# ---------------------------------------------------------------------------
 # 4) Downgrade / eski HTTP istekleri için gereksiz yükleme yok
 #    (Herhangi bir .well-known dışı varlık için otomatik index yerine 403)
 # ---------------------------------------------------------------------------

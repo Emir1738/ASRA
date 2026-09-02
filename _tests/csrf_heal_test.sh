@@ -7,7 +7,8 @@
 # ============================================================================
 set -u
 BASE="http://127.0.0.1:8090/auth.php"
-T="/home/user/projects/ASRA/_tests/run_csrf"; rm -rf "$T"; mkdir -p "$T"
+SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+T="$SDIR/run_csrf"; rm -rf "$T"; mkdir -p "$T"
 # Ortam izolasyonu: sabit kullanıcı adı her seferinde taze olmalı
 SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "$SDIR/reset_env.sh"

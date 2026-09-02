@@ -1,17 +1,21 @@
 package app.asra.client
 
-import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
 
+/**
+ * Sayfa <-> uygulama köprüsü.
+ *
+ * v1.7.0: Bildirim sistemi kaldırıldığı için bu köprü yalnızca iki şey
+ * sağlar — cihaz kimliği ve "ben uygulamayım" bilgisi. Eski sürümlerin
+ * sayfayla uyumlu kalması için bildirimle ilgili yöntemler İMZA OLARAK
+ * durur ama hiçbir şey yapmaz (no-op); böylece eski bir sayfa yüklense
+ * bile JavaScript tarafı hata vermez.
+ */
 class AsraBridge(
-    private val context: Context,
     private val identity: String,
-    private val notifier: AsraNotifier,
-    private val onOpenRoom: (Int) -> Unit,
-    private val isAppVisible: () -> Boolean,
-    private val requestNotifyPermission: () -> Unit
+    private val onOpenRoom: (Int) -> Unit
 ) {
     private val main = Handler(Looper.getMainLooper())
 
@@ -21,38 +25,24 @@ class AsraBridge(
     @JavascriptInterface
     fun isNativeApp(): Boolean = true
 
+    /** Bildirim kaldırıldı: yalnızca eski sayfalarla uyumluluk için durur. */
     @JavascriptInterface
     fun notifyRooms(payload: String) {
-        main.post {
-            notifier.handleRoomsPayload(payload, isAppVisible())
-            AsraWatch.sync(context)
-        }
     }
 
+    /** Bildirim kaldırıldı: yalnızca eski sayfalarla uyumluluk için durur. */
     @JavascriptInterface
     fun notify(title: String, body: String, roomId: String) {
-        val id = roomId.toIntOrNull() ?: 0
-        main.post { notifier.showDirect(title, body, id) }
     }
 
+    /** Bildirim kaldırıldı: izin İSTENMEZ (no-op). */
     @JavascriptInterface
     fun requestNotifications() {
-        main.post {
-            requestNotifyPermission()
-            AsraWatch.sync(context)
-        }
     }
 
+    /** Arka plan izleme kaldırıldı (no-op). */
     @JavascriptInterface
     fun setWatching(active: Boolean) {
-        main.post {
-            if (active) AsraWatch.start(context) else AsraWatch.sync(context)
-        }
-    }
-
-    @JavascriptInterface
-    fun setNtfyChannel(active: Boolean) {
-        main.post { AsraWatch.pageNtfyChannel = active }
     }
 
     @JavascriptInterface

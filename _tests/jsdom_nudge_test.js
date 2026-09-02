@@ -2,10 +2,11 @@
 // #app-view içinde .update-nudge bandı görünmeli; güncel/tarayıcı UA'da olmamalı.
 // Kullanım: node jsdom_nudge_test.js "UA-STRING"
 const puppeteer = require('puppeteer-core');
+const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium';
 const UA_ARG = process.argv[2];
 
 (async () => {
-  const browser = await puppeteer.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const browser = await puppeteer.launch({ executablePath: CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   const page = await browser.newPage();
   await page.setViewport({ width: 393, height: 850, isMobile: true });
   if (UA_ARG) await page.setUserAgent(UA_ARG);
@@ -14,14 +15,11 @@ const UA_ARG = process.argv[2];
       isNativeApp: () => true,
       getDeviceId: () => 'asra.testdevice000000',
       setWatching: () => {},
-      setNtfyChannel: () => {},
       notifyRooms: () => {},
       notify: () => {},
       requestNotifications: () => {},
       openRoom: () => {},
     };
-    window.__NTFY_BASE__ = 'http://127.0.0.1:8090/ntfy';
-    window.__NTFY_INTERVAL_MS__ = 20000;
   });
   await page.goto('http://127.0.0.1:8090/', { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
   await new Promise((r) => setTimeout(r, 2500));

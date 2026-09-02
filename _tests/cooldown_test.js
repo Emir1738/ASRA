@@ -5,17 +5,16 @@
 //  2) Süre bitmeden yazı girilse bile gönderilemez (0 istek, 0 yeni satır)
 //  3) Süre bitince buton eski hâline döner, tekrar gönderilebilir
 const puppeteer = require('puppeteer-core');
+const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium';
 const crypto = require('crypto');
 
 const URL = 'http://127.0.0.1:8090/';
 
 (async () => {
-  const browser = await puppeteer.launch({ executablePath: '/tmp/chrome/chrome/linux-152.0.7977.64/chrome-linux64/chrome', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const browser = await puppeteer.launch({ executablePath: CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   const page = await browser.newPage();
   await page.setViewport({ width: 393, height: 850, isMobile: true });
   await page.evaluateOnNewDocument(() => {
-    window.__NTFY_BASE__ = 'http://127.0.0.1:8090/ntfy';
-    window.__NTFY_INTERVAL_MS__ = 60000;
     window.__fetchCalls = [];
     const orig = window.fetch;
     window.fetch = function (input, init) {
@@ -130,5 +129,8 @@ const URL = 'http://127.0.0.1:8090/';
 
   await browser.close();
   console.log('\nSONUÇ: ✓' + pass + ' ✗' + fail);
+  // Koşucu (run-tests.sh) bash suite'lerinin özet biçimini sayar; node
+  // suite'leri de aynı biçimde satır basar ki toplam doğru çıksın.
+  console.log('GEÇTİ: ' + pass + '   BAŞARISIZ: ' + fail);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error('HATA:', e.message); process.exit(2); });

@@ -35,7 +35,6 @@ object AsraHttp {
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("User-Agent", AsraSession.userAgent(app))
                 setRequestProperty(AsraIdentity.HEADER_NAME, AsraIdentity.deviceId(app))
-                setRequestProperty(AsraIdentity.PUSH_TOPIC_HEADER, AsraNtfy.topic(app))
                 val cookie = AsraSession.cookie(app)
                 if (cookie.isNotBlank()) setRequestProperty("Cookie", cookie)
                 extraHeaders.forEach { (key, value) -> setRequestProperty(key, value) }

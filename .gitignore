@@ -4,6 +4,15 @@ asra-apk-build/build/
 
 # Test çalıştırma artıkları (her koşuda yeniden oluşur)
 _tests/run/
-_tests/run_push/
-_tests/run_csrf/
-_tests/ntfy_log.json
+_tests/run_*/
+.gradle/
+app/build/
+local.properties
+signing.properties
+
+# Gizli anahtarlar ASLA depoya girmez
+asra-fcm-service-account.json
+*-firebase-adminsdk*.json
+
+# Dağıtım yapılandırması (veritabanı parolası) ASLA depoya girmez
+asra-site-fix/asra-config.php

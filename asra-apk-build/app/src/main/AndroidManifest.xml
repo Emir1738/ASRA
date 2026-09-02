@@ -1,23 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="app.asra.client"
-    android:versionCode="24"
-    android:versionName="1.5.7">
+    android:versionCode="27"
+    android:versionName="1.7.0">
 
     <uses-sdk
         android:minSdkVersion="24"
         android:targetSdkVersion="34" />
 
+    <!-- v1.7.0: Bildirim sistemi KÖKTEN kaldırıldı. Uygulama artık hiçbir
+         bildirim izni, titreşim izni, uyanma kilidi, ön plan servisi,
+         tam zamanlı alarm veya açılışta çalışma izni İSTEMEZ. Yalnızca ağ
+         ve kamera/mikrofon (WebView medya yakalama) izinleri kalır. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
@@ -89,7 +84,6 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Asra"
-        android:directBootAware="true"
         android:usesCleartextTraffic="true">
 
         <activity
@@ -110,48 +104,5 @@
             android:authorities="app.asra.client.capture"
             android:exported="false"
             android:grantUriPermissions="true" />
-
-        <service
-            android:name=".AsraNotifyService"
-            android:exported="false"
-            android:foregroundServiceType="remoteMessaging"
-            android:stopWithTask="false" />
-
-        <service
-            android:name=".AsraPingJob"
-            android:exported="false"
-            android:permission="android.permission.BIND_JOB_SERVICE" />
-
-        <receiver
-            android:name=".AsraAlarmReceiver"
-            android:directBootAware="true"
-            android:enabled="true"
-            android:exported="false" />
-
-        <receiver
-            android:name=".AsraRestartReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="app.asra.client.RESTART" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".AsraBootReceiver"
-            android:directBootAware="true"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                <action android:name="android.intent.action.USER_PRESENT" />
-                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
-                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
-                <action android:name="android.intent.action.TIME_SET" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
     </application>
 </manifest>
