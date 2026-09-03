@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-AJq7aQ+BKk/PkffXK654RHhka5zTLWEWycQiD1U8n1c='; script-src 'self' 'sha256-zkM9UQaWpBS12eX8VIz8bQekm20nN8YZOAfFIUPGHLA='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-3i+LuZaFVJ+SSWU/uLOo7lK7JcAlxF4JM4rU6fGEgyY='; script-src 'self' 'sha256-Bm1Qn6k0f7hxzDCSUwLuna/FiyHbQmomFXjsEnhq3zc='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Asra Chat</title>
   <style>
 @charset "UTF-8";
@@ -358,7 +358,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); outline
 .notice-copy { min-width: 0; }
 .notice-copy strong { display: block; margin: 0 0 4px; font-size: .83rem; letter-spacing: -.01em; }
 .notice-copy .notice-rule { display: block; overflow: hidden; color: var(--muted); font-size: .72rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-.retention-panel { display: flex; align-items: center; gap: 8px; }
+.retention-panel { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .retention-panel .countdown {
   display: flex;
   min-height: 34px;
@@ -372,7 +372,18 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); outline
   font-size: .68rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  /* Dar ekranda metin kırpılıp yarısı görünüyordu: hap artık YATAY
+     KAYDIRILABİLİR, parmakla çekince tamamı okunur. */
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
+.retention-panel .countdown::-webkit-scrollbar { height: 4px; }
+.retention-panel .countdown::-webkit-scrollbar-thumb { border-radius: 999px; background: color-mix(in srgb, var(--warning) 45%, transparent); }
 .retention-panel .countdown .ui-icon { width: 15px; height: 15px; }
 .retention-help { min-height: 34px; padding: 0 10px; border: 0; border-radius: 10px; color: var(--accent); background: transparent; font-size: .72rem; font-weight: 780; }
 .retention-help:hover { background: var(--accent-soft); }
@@ -547,7 +558,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); outline
 .modal-copy { margin: 0; color: var(--muted); line-height: 1.62; }
 .modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-top: 20px; }
 .invite-code-box { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin: 15px 0; }
-.invite-code { min-height: 50px; overflow: hidden; padding: 14px; border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: 12px; color: var(--accent); background: var(--accent-soft); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .84rem; font-weight: 760; text-overflow: ellipsis; white-space: nowrap; }
+.invite-code { min-height: 50px; overflow: hidden; padding: 14px; border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: 12px; color: var(--accent); background: var(--accent-soft); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .84rem; font-weight: 760; overflow-wrap: anywhere; white-space: normal; word-break: break-word; }
 .viewer-list, .admin-user-list { display: grid; gap: 8px; }
 .viewer-row, .admin-user-row { display: flex; align-items: center; gap: 11px; padding: 11px; border: 1px solid var(--line); border-radius: 13px; background: var(--field); }
 .viewer-row .message-avatar, .admin-user-row .message-avatar { width: 38px; height: 38px; }
@@ -717,9 +728,10 @@ a.primary-button, a.secondary-button { text-decoration: none; }
   .room-notice { grid-template-columns: auto minmax(0, 1fr); gap: 9px; min-height: 64px; padding: 9px 10px; }
   .notice-icon { width: 38px; height: 38px; border-radius: 12px; }
   .notice-copy .notice-rule { white-space: normal; }
-  .retention-panel { grid-column: 1 / -1; justify-content: space-between; padding-left: 47px; }
-  .retention-panel .countdown { min-height: 29px; overflow: hidden; font-size: .62rem; text-overflow: ellipsis; }
-  .retention-help { min-height: 29px; }
+  .retention-panel { grid-column: 1 / -1; justify-content: space-between; gap: 6px; min-width: 0; padding-left: 47px; }
+  /* overflow:hidden + ellipsis yerine kaydırma: sayaç artık kesilmiyor */
+  .retention-panel .countdown { min-height: 29px; overflow-x: auto; overflow-y: hidden; font-size: .62rem; text-overflow: clip; }
+  .retention-help { min-height: 29px; flex: 0 0 auto; }
   .message-list { padding: 16px 9px 22px; }
   .date-divider { margin-bottom: 15px; }
   .message-row { gap: 6px; margin: 3px 0; }
@@ -1347,6 +1359,7 @@ const state = {
   pendingImage: null,
   previewUrl: '',
   nextCleanupAt: null,
+  retentionHours: 24,
   countdownTimer: null,
   banTimer: null,
   pollBackoff: 0,
@@ -1872,6 +1885,7 @@ function recoverAuthentication() {
     .then((payload) => {
       if (payload?.csrf_token) state.csrf = payload.csrf_token;
       if (typeof payload?.hit_economy === 'boolean') state.hitEconomy = payload.hit_economy;
+      if (Number(payload?.message_retention_hours) > 0) state.retentionHours = Number(payload.message_retention_hours);
       if (payload?.authenticated) {
         setConnection(true);
         return;
@@ -2770,7 +2784,7 @@ function renderChatLayout() {
     createElement('span', 'notice-rule', 'Konu dışına çıkmayın; hakaret, aşağılama ve kişisel saldırı yasaktır.')
   );
   const retention = createElement('div', 'retention-panel');
-  const retentionText = createElement('span', 'countdown', 'Duyurular dahil 24 saat sonra temizlenir · 24 saat 0 dakika');
+  const retentionText = createElement('span', 'countdown', `Duyurular dâhil ${Number(state.retentionHours) || 24} saat sonra temizlenir · hesaplanıyor…`);
   retentionText.prepend(svgIcon('clock'));
   const why = button(t('why'), 'retention-help');
   why.addEventListener('click', openMessageRetentionReason);
@@ -2832,11 +2846,32 @@ function renderChatLayout() {
   view.focus();
 }
 
+// Sunucu geri sayımı yalnızca odaya İLK girişte (meta=1) ve odada mesaj
+// varsa gönderir. Boş odaya girip mesaj yazınca geri sayım hiç başlamıyordu;
+// bu yüzden elimizdeki mesaj listesinden EK İSTEK ATILMADAN türetilir.
+function deriveRetentionFrom(messages) {
+  if (state.nextCleanupAt || !Array.isArray(messages) || !messages.length) return;
+  let oldest = Infinity;
+  messages.forEach((message) => {
+    const at = new Date(message.created_at).getTime();
+    if (Number.isFinite(at) && at < oldest) oldest = at;
+  });
+  if (oldest === Infinity) return;
+  state.nextCleanupAt = new Date(oldest + state.retentionHours * 3600000).toISOString();
+}
+
 function updateRetentionCountdown() {
   const element = $('.room-notice .countdown');
   if (!element) return;
-  const remaining = state.nextCleanupAt ? remainingText(state.nextCleanupAt) : '24 saat 0 dakika';
-  element.replaceChildren(svgIcon('clock'), document.createTextNode(`Duyurular dahil 24 saat sonra temizlenir · ${remaining}`));
+  const hours = Number(state.retentionHours) || 24;
+  let tail;
+  if (!state.nextCleanupAt) {
+    tail = 'oda boş · ilk mesajdan sonra başlar';
+  } else {
+    const seconds = Math.floor((new Date(state.nextCleanupAt).getTime() - Date.now()) / 1000);
+    tail = seconds > 0 ? remainingText(state.nextCleanupAt) : 'temizleniyor…';
+  }
+  element.replaceChildren(svgIcon('clock'), document.createTextNode(`Duyurular dâhil ${hours} saat sonra temizlenir · ${tail}`));
 }
 
 async function refreshSessionState() {
@@ -2844,6 +2879,7 @@ async function refreshSessionState() {
   if (!payload) return;
   if (payload.csrf_token) state.csrf = payload.csrf_token;
   if (typeof payload.hit_economy === 'boolean') state.hitEconomy = payload.hit_economy;
+  if (Number(payload.message_retention_hours) > 0) state.retentionHours = Number(payload.message_retention_hours);
   if (payload.user) mergeUserFromPayload(payload.user);
 }
 
@@ -2876,9 +2912,10 @@ async function fetchMessages(initial = false) {
     });
     if (!state.currentRoom || state.currentRoom.id !== roomId) return false;
     if (payload.next_cleanup_at) state.nextCleanupAt = payload.next_cleanup_at;
+    const messages = payload.messages;
+    deriveRetentionFrom(messages);
     updateRetentionCountdown();
     if (!state.countdownTimer) state.countdownTimer = window.setInterval(updateRetentionCountdown, 30000);
-    const messages = payload.messages;
     msgCacheSet(roomId, messages); // onbellegi resmi durumla sinirla
     const signature = messages.map((message) => `${message.id}:${message.view_count}:${message.profile_image_path || ''}:${message.active_profile_frame || ''}`).join('|');
     const changed = initial || signature !== state.messagesSignature;
@@ -2988,12 +3025,20 @@ function buildMessageRow(message, grouped = false) {
   if (displayContent) bubble.append(createElement('p', 'message-text', displayContent));
   const meta = createElement('div', 'message-meta');
   meta.append(createElement('time', '', formatTime(message.created_at)));
-  const viewers = createElement('button', 'viewers-button', `${message.view_count} ${t('seenBy')}`);
+  const viewers = createElement('button', 'viewers-button', `${Number(message.view_count) || 0} ${t('seenBy')}`);
   viewers.type = 'button';
   viewers.addEventListener('click', (event) => {
     event.stopPropagation();
-    const mid = Number(message.id);
-    if (!mid) return; // henüz sunucuya teslim edilmis yerel mesaj
+    // KÖK DÜZELTME: kimlik TIKLAMA ANINDA satırdan okunur. Yerel çizilen satır
+    // sunucuya teslim edilince row.dataset.msgId resmî id'ye döner, ama bu
+    // dinleyicinin yakaladığı message.id yerel kimlikte ("local-…") kalıyordu;
+    // Number() NaN üretip buton SESSİZCE hiçbir şey yapmıyordu.
+    const row = viewers.closest('.message-row');
+    const mid = Number(row?.dataset.msgId) || Number(state.localIdMap?.[message.id]) || Number(message.id) || 0;
+    if (!Number.isFinite(mid) || mid <= 0) {
+      toast('Mesaj sunucuya iletiliyor, görenler birazdan açılacak.', 'info');
+      return;
+    }
     openViewers(mid).catch(displayError);
   });
   meta.append(viewers);
@@ -3111,6 +3156,12 @@ async function sendCurrentMessage(event) {
     list.scrollTop = list.scrollHeight;
   }
   msgCacheAppend(state.currentRoom.id, sentMsg);
+  // Boş odaya yazılan ilk mesaj: sunucu meta=1 olmadan geri sayım
+  // göndermediği için sayaç buradan başlatılır (ek istek yok).
+  if (!state.nextCleanupAt) {
+    state.nextCleanupAt = new Date(Date.now() + (Number(state.retentionHours) || 24) * 3600000).toISOString();
+    updateRetentionCountdown();
+  }
   textarea.value = '';
   textarea.classList.remove('expanded');
   if (image) releasePendingImage();
@@ -3353,7 +3404,7 @@ function openAnnouncementDeleteMenu(message) {
 function openMessageRetentionReason() {
   const content = createElement('div');
   content.append(
-    createElement('p', 'modal-copy', 'Veritabanı kapasitesinin verimli kullanılması ve sistemin hızlı, kararlı ve performanslı çalışmasının sürdürülmesi için duyurular dâhil bütün odalardaki mesajlar gönderildikten 24 saat sonra düzenli olarak temizlenir.')
+    createElement('p', 'modal-copy', `Veritabanı kapasitesinin verimli kullanılması ve sistemin hızlı, kararlı ve performanslı çalışmasının sürdürülmesi için duyurular dâhil bütün odalardaki mesajlar gönderildikten ${Number(state.retentionHours) || 24} saat sonra düzenli olarak temizlenir.`)
   );
   const actions = createElement('div', 'modal-actions');
   const close = button(t('close'), 'primary-button');

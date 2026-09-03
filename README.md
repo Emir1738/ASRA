@@ -232,6 +232,44 @@ açmaz ve engel sürerken `blocked_until` değeri değişmez.
 `rooms` tablosu kurulur, ilk istek 503 değil **200** döner, eksik sütun
 otomatik eklenir, katalog 20 odaya tamamlanır ve mevcut satırlar ezilmez.
 
+## Arayüz onarımları: görenler, geri sayım, kırpılan metin
+
+Kullanıcı bildiriminden çıkan üç kusur (üçü de istemci tarafındaydı; sunucu
+uçları ölçüldü ve sağlam çıktı):
+
+1. **Mesajı atınca "Görenler" açılmıyordu.** Yerel çizilen satırın butonu,
+   dinleyici kurulurken yakalanan `message.id`'yi kullanıyordu. Mesaj sunucuya
+   teslim edilince satırın `dataset.msgId`'si resmî kimliğe dönüyor ama kapanış
+   eski `local-…` değerinde kalıyordu → `Number()` = `NaN` → buton **sessizce**
+   hiçbir şey yapmıyordu. Kimlik artık **tıklama anında** satırdan okunuyor;
+   satır henüz teslim edilmediyse kullanıcıya bilgi veriliyor.
+2. **Temizlenme geri sayımı boş odada hiç başlamıyordu.** Sunucu `next_cleanup_at`
+   değerini yalnızca odaya ilk girişte (`meta=1`) ve odada mesaj varsa
+   gönderiyor; boş odaya girip mesaj yazınca sayaç sabit kalıyordu. Geri sayım
+   artık **ek istek atılmadan** eldeki mesaj listesinden türetiliyor
+   (`deriveRetentionFrom`) ve ilk gönderimde başlatılıyor. Oda boşken uydurma
+   "24 saat 0 dakika" yerine "oda boş · ilk mesajdan sonra başlar" yazıyor.
+   Saklama süresi istemcide sabit yazılmıyor: `session` yanıtındaki
+   `message_retention_hours` kullanılıyor.
+3. **Geri sayım dar ekranda kırpılıyordu.** `.countdown` mobilde
+   `overflow:hidden + text-overflow:ellipsis` idi; sayacın sonu hiç
+   görünmüyordu. Hap artık **yatay kaydırılabilir** (`overflow-x:auto`,
+   dokunmatik kaydırma + ince kaydırma çubuğu): çekince metnin tamamı okunur.
+   Ölçüm: 393 px genişlikte `scrollLeft 0 → 98`.
+
+Aynı denetimde bulunan ek kırpılma: **davet kodu** kutusu da `ellipsis` ile
+kesiliyordu; artık satır atlıyor ve kodun tamamı görünüyor.
+
+`_tests/ui_fix_browser_test.js` üçünü de gerçek Chromium'da ölçer. Düzeltme
+öncesi aynı test **7 doğrulamada kırmızıydı** (görenler penceresi açılmıyor,
+`get_message_views` isteği gitmiyor, sayaç başlamıyor, `overflow-x=hidden`),
+düzeltme sonrası 18/18 yeşil.
+
+Sunucu tarafında tek değişiklik: `get_message_views` üzerindeki 24 saatlik ek
+pencere kaldırıldı. Temizlik örneklemeli çalıştığı için süresi dolmuş bir mesaj
+bir süre daha veritabanında duruyor; o aralıkta ekranda görünen mesajın görenler
+listesi "Mesaj bulunamadı" diyordu.
+
 ## Adres ve tanı
 
 - **Site adresi:** `https://asra.42web.io` (eskisi `asra.freedev.app`).
@@ -285,7 +323,7 @@ Yardımcılar (suite'e dâhil değil):
 
 `bash /home/user/.setup/run-tests.sh /home/user/projects/ASRA-fcm <etiket>`
 
-Son tam koşu: `v25` (eski döküm şema onarımı).
+Son tam koşu: `v26` (arayüz onarımları: görenler, geri sayım, kırpılma).
 
 | Suite | Sonuç |
 |---|---|
@@ -298,7 +336,8 @@ Son tam koşu: `v25` (eski döküm şema onarımı).
 | `message_delete_test` | ✓29 ✗0 |
 | `csrf_heal_test` | ✓5 ✗0 |
 | `cooldown_test` | ✓20 ✗0 |
-| **TOPLAM** | **✓231 ✗0** |
+| `ui_fix_browser_test` | ✓18 ✗0 |
+| **TOPLAM** | **✓249 ✗0** |
 
 ## Sunucuya yükleme
 

@@ -3078,6 +3078,9 @@ function actionSession(PDO $pdo): never
         'device_has_account' => $deviceState['has_account'],
         'bound_username' => $deviceState['username'],
         'approval_block' => activeApprovalBlock($pdo, $deviceState['username']),
+        // Arayüz geri sayım metnini sabit "24 saat" diye yazıyordu; kural
+        // sunucuda tek yerde tutulur ve istemciye buradan bildirilir.
+        'message_retention_hours' => MESSAGE_RETENTION_HOURS,
     ];
     if (!empty($_SESSION['user_id'])) {
         try {
@@ -3593,7 +3596,10 @@ function actionGetMessageViews(PDO $pdo): never
     requireUser($pdo);
     closeSessionEarlyForReads('get_message_views');
     $messageId = integerField($_GET['message_id'] ?? null, 'Mesaj');
-    $exists = $pdo->prepare('SELECT 1 FROM messages WHERE id = ? AND deleted_at IS NULL AND created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 24 HOUR)');
+    // Not: 24 saatlik ek pencere KALDIRILDI. Temizlik örneklemeli çalıştığı
+    // için mesaj süresi geçtiği hâlde bir süre daha veritabanında durur; o
+    // aralıkta ekranda görünen mesajın görenler listesi "bulunamadı" diyordu.
+    $exists = $pdo->prepare('SELECT 1 FROM messages WHERE id = ? AND deleted_at IS NULL');
     $exists->execute([$messageId]);
     if (!$exists->fetchColumn()) {
         throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'Mesaj bulunamadı.');
