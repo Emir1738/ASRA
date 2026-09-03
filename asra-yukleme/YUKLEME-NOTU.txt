@@ -1,0 +1,147 @@
+ASRA — YÜKLEME PAKETİ (v1.7.1 · asra.42web.io · yeni veritabanı)
+=================================================================
+
+İÇERİK (3 dosya + APK)
+----------------------
+  auth.php          256.153 bayt   sunucu API'si (yeni DB bilgileri İÇİNDE)
+                                   SHA-256: 1a17ff1db56452af8d93f11280dd2134678e5ba5d861f58731abb39f8af476dc
+  index.html        351.541 bayt   arayüz (CSS + JS + logo gömülü, tek dosya)
+                                   SHA-256: 0f5b74e5c95b52c8f163a8a1f6503d81ba272649d72d8a7c7c90371a6330267d
+  .htaccess           4.028 bayt   Apache başlıkları + gizli dosya engeli
+  asra-1.7.1.apk    711.644 bayt   Android uygulaması (imzalı, v2+v3)
+                                   SHA-256: 83443be4df59f8e1294a1567314c29c62eca715c4b67f8d5535754e3e6f4a34d
+                                   Sertifika: 3527c221... (eski sürümün üzerine güncelleme olarak kurulur)
+
+VERİTABANI (yeni hesap)
+-----------------------
+  Sunucu : sql303.infinityfree.com:3306
+  Veritabanı : if0_42805855_asra
+  Kullanıcı  : if0_42805855
+  Parola     : auth.php içinde (tek dosya yeterli)
+
+  Bu bilgiler auth.php'NİN İÇİNDE. Klasörde TEK .php dosyası var; ayrı bir
+  yapılandırma dosyası yok. Başka bir veritabanına geçmek gerekirse
+  ASRA_DB_DSN / ASRA_DB_USER / ASRA_DB_PASSWORD ortam değişkenleri bu
+  varsayılanları ezer (kodu değiştirmeden).
+  Eski hesap (sql102 / if0_42676193) ve eski parola koddan tamamen silindi.
+
+YÜKLEME SIRASI
+--------------
+1) ÜÇ dosyayı birlikte belge köküne yükle:
+     auth.php, index.html, .htaccess
+2) Belge kökünde duruyorsa SİL:
+     - firebase-messaging-sw.js
+     - asra-fcm-service-account.json   (RSA özel anahtarı; web kökünde durmamalı)
+3) APK: asra-1.7.1.apk — aynı sertifikayla imzalı, eski sürümün üzerine
+   doğrudan güncelleme olarak kurulur (versionCode 28).
+   Bu sürüm YENİ ADRESİ (asra.42web.io) açar; 1.7.0 ve öncesi eski adresi
+   (asra.freedev.app) açtığı için artık çalışmaz.
+
+SQL YÜKLEMEK GEREKMEZ
+---------------------
+auth.php şemayı KENDİ kurar (ensureCoreSchema):
+  • 9 çekirdek tablo + ek tablolar  -> CREATE TABLE IF NOT EXISTS
+  • 20 odalık katalog               -> INSERT IGNORE
+Boş bir veritabanına sadece dosyaları yüklemek yeterlidir. Tüm ifadeler
+"varsa dokunma" türünde olduğu için tekrar çalışmak zararsızdır; mevcut
+veri ve oda adların ezilmez.
+
+  Önemli: daha önce yüklediğin SQL yalnızca 15 oda içeriyordu; uygulama
+  kataloğu 20 oda. Eksik 5 oda (Jeoloji, Fizik, Kimya, Felsefe, Biyoloji)
+  ilk istekte otomatik eklenir.
+
+  Ayrıca onarılan kritik bir kusur: şema kurulum işareti eskiden /tmp
+  içinde bir DOSYAYDI ve 24 saat geçerliydi. Veritabanı değiştirildiğinde
+  (senin yaptığın taşıma) eski işaret yeni veritabanında kurulumu
+  ATLATIYOR ve site 500 veriyordu. Artık damga veritabanının içinde
+  tutuluyor; veritabanı değişince kurulum mutlaka yeniden çalışıyor.
+
+NE DEĞİŞTİ (önceki pakete göre)
+-------------------------------
+* Veritabanı bağlantısı yeni hesaba geçirildi; parola koddan çıkarıldı.
+* Şema kendini kuruyor; SQL yüklemek gerekmiyor.
+* SIFIR-HIT BOŞTA DÜZENİ: periyodik get_messages YOK. Oda boşta dakikada
+  1 istek (get_rooms), ekran gizliyken 0. Yeni mesaj en geç 60 sn'de
+  görünür; mesaj gönderildikten sonra 2 dakika boyunca 10 sn'de bir bakar.
+* Uygulama BİLDİRİM İZNİ İSTEMEZ. İzinler yalnızca: INTERNET,
+  ACCESS_NETWORK_STATE, CAMERA, RECORD_AUDIO, MODIFY_AUDIO_SETTINGS.
+
+HIT KOTASI (kademeli seyreltme ile %58-66 daha az)
+--------------------------------------------------
+Boşta ritim artık kademeli: ilk 5 tur 60 sn, sonra 120 sn, sonra 180 sn
+tavan. Hiçbir şey değişmeyen açık sekme saatlerce 1 istek/dk yemiyor.
+Herhangi bir etkinlik (mesaj yazma, yeni mesaj, ekrana dönüş) ritmi anında
+60 sn'ye döndürür; yani sen başındayken gecikme 1 dakikada kalır.
+Sayfa açılışı 1 istek (harici CSS/JS dosyası yok).
+
+  Açık süre    ÖNCE     ŞİMDİ    Aylık(30 gün)
+  1 saat         60  ->    25          750
+  2 saat        120  ->    45        1.350
+  4 saat        240  ->    85        2.550
+  24 saat     1.440  ->   485       14.550
+
+50.000 AYLIK kota ile: 2 saat/gün -> 37 kullanıcı, 4 saat/gün -> 19
+kullanıcı, 7/24 açık -> 3 kullanıcı. Kota GÜNLÜK ise zaten çok rahat.
+Daha da azaltmak istersen index.html içinde ROOM_PULSE_IDLE_MAX_MS = 180000
+değerini büyüt (örn. 300000 = 5 dk tavan); mesaj gecikmesi de o kadar uzar.
+
+"BAĞLANTI GEÇİCİ OLARAK YAVAŞLADI" KİLİTLENMESİ ONARILDI
+--------------------------------------------------------
+Belirti: site açılıyor ama hiçbir ekrana girilemiyor, sürekli
+"Bağlantı geçici olarak yavaşladı" uyarısı çıkıyordu.
+
+Kök neden (iki kusur):
+  1) Sunucudaki hız koruması engeli her istekte yeniden 90 saniye
+     uzatılıyordu. Engel sürerken gelen her istek (uygulamanın kendi 60
+     saniyelik nabız turu bile) engeli ileri atıyordu; yani kilit pratikte
+     HİÇ bitmiyordu. Üstelik bu sayaç TÜM hesabı kapsadığı için tek bir
+     bozuk sekme herkesi dışarıda bırakıyordu.
+  2) SQL ile içe aktarılan veritabanında hız sınırı satırının pencere alanı
+     bozuk/NULL ise sayaç asla sıfırlanmıyor, site kalıcı kilitleniyordu.
+  3) Veritabanını ESKİ bir dökümden içe aktardığında 'rooms' tablosunda
+     'position' sütunu eksik kalıyordu. Kurulum "tablo yoksa oluştur"
+     mantığıyla çalıştığı için VAR OLAN tabloya dokunmuyor, oda listesi
+     her istekte hata veriyor ve site açılmıyordu.
+
+Onarım:
+  • Engel artık uzamıyor; süresi bitince site KENDİLİĞİNDEN açılıyor.
+  • Engel sürerken sayaç artmıyor.
+  • Bozuk/NULL pencere "süresi dolmuş" sayılıp satır onarılıyor.
+  • Eksik sütun artık KENDİLİĞİNDEN ekleniyor: eski dökümü içe aktarsan da
+    elle SQL çalıştırman gerekmiyor, ilk istekte tablo tamamlanıyor.
+  • Kurulum bir kez çalışıp bozuk kilit satırlarını temizliyor (şema sürümü
+    v19'a çıkarıldı) — yani yeni auth.php'yi yüklemen yeterli, veritabanında
+    elle bir şey silmene gerek yok.
+  • Eşikler gerçek kullanıma göre ayarlandı: hesap geneli 180 istek/dk
+    (önceden 60), oturum başına 90/dk (önceden 50), engel süresi 30 sn
+    (önceden 90 sn). Boşta kullanıcı 1 istek/dk harcadığı için normal
+    kullanımda bu sınırlara hiç yaklaşılmaz.
+
+SİTE AÇILMIYORSA: TANI UCUNU KULLAN
+-----------------------------------
+Tarayıcıdan şu adresi aç:
+     https://asra.42web.io/auth.php?action=health
+
+  • JSON görüyorsan ve "ok":true  -> sunucu ve veritabanı sağlam.
+  • "ok":false ve "db_error"      -> veritabanı bağlantı sorunu; mesaj gerçek
+                                     nedeni yazar (erişim reddi, çözümlenemeyen
+                                     sunucu adı, yanlış veritabanı adı).
+  • HTML sayfası görüyorsan       -> auth.php yüklenmemiş/yanlış klasörde ya
+                                     da PHP çalışmıyor (veya sağlayıcı kendi
+                                     koruma sayfasını gösteriyor).
+Bu uç kimlik doğrulama istemez ve parola/kullanıcı adı SIZDIRMAZ.
+
+DİKKAT
+------
+* 1.6.x ve öncesi uygulamalar anlık mesaj almaz (itilen kanal kaldırıldı);
+  1.7.0'a güncellenmelidir. Sunucu çökmez, sadece canlı akış durur.
+* user_push_tokens / push_events / user_push_topics tabloları varsa
+  dokunulmaz; sunucu artık okumaz da yazmaz da.
+
+DOĞRULAMA
+---------
+Tam test koşusu: ✓215 / ✗0
+  bash /home/user/.setup/run-tests.sh /home/user/projects/ASRA-fcm <etiket>
+Buna "boş veritabanı" testi de dâhil: 0 tablolu bir veritabanına yalnızca
+bağlanıp şemanın ve 20 odanın kendiliğinden oluştuğunu,
+kayıt→giriş→oda→mesaj akışının çalıştığını kanıtlar (17 kontrol).

@@ -1,0 +1,93 @@
+# ============================================================================
+#  Asra Chat — Sunucu İyileştirmeleri
+#  Amaç: Ücretsiz hosting "hits/CPU/bandwidth" kotasını aşmayı önlemek.
+#  Bu dosya yalnızca kalıntı (artifact) olmayan, güvenli ve geri alınabilir
+#  kurallar içerir. Eksik modüller <IfModule> ile korunmuştur.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# 1) Sıkıştırma (gzip / deflate)
+#    index.html 320 KB iken sıkıştırma sonrası ~40-60 KB'ye iner. Bu, hem
+#    bandwidth hem de her istemcinin indirdiği veri miktarını ciddi azaltır.
+# ---------------------------------------------------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json application/xml application/xhtml+xml image/svg+xml
+  # Eski proxy'lere karşı Vary
+  <IfModule mod_headers.c>
+    Header append Vary: Accept-Encoding
+  </IfModule>
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# 2) Tarayıcı önbelleği
+#    auth.php asla önbelleğe alınmaz (dinamik API, oturum bazlı). index.html
+#    ise kısa süreli yeniden doğrulamalı önbelleklenir: her açılışta tekrar
+#    indirilmez, ancak güncelleme geldiğinde yine de güncel sürüm alınır.
+# ---------------------------------------------------------------------------
+<IfModule mod_headers.c>
+  # API (dinamik): kesinlikle önbelleğe alınmaz
+  <FilesMatch "\.(php)$">
+    Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+
+  # Uygulama kabuğu: yeniden doğrula; 2 saatlik kısa ömür
+  <Files "index.html">
+    Header set Cache-Control "public, no-cache, max-age=0, must-revalidate"
+  </Files>
+
+  # Statik varlıklar (görsel yoksa bile genel güvenlik)
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "DENY"
+  Header set Referrer-Policy "no-referrer"
+  Header set X-XSS-Protection "1; mode=block"
+  Header always set X-Powered-By "PHP"
+  Header unset X-Powered-By
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# 3) Güvenlik
+# ---------------------------------------------------------------------------
+<IfModule mod_headers.c>
+  Header set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
+
+# Dizin listelemeyi kapat
+Options -Indexes
+
+# Sunucu imzasını gizle
+ServerSignature Off
+
+# ---------------------------------------------------------------------------
+# 3b) Gizli anahtar / yapılandırma dosyaları ASLA webden okunamaz
+#
+#     Belge köküne yanlışlıkla bırakılan .json / .pem / .key dosyaları
+#     (servis hesabı anahtarı, yedek, döküm) internette bir kez görünürse
+#     geri alınamaz. Sitede tarayıcıya sunulan hiçbir .json dosyası
+#     olmadığı için bu uzantıların toptan kapatılması güvenlidir.
+#     Gizli dosyaları yine de belge kökü DIŞINDA tutmak en doğrusudur.
+# ---------------------------------------------------------------------------
+<IfModule mod_authz_core.c>
+  # Apache 2.4+
+  <FilesMatch "\.(json|pem|key)$">
+    Require all denied
+  </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+  # Apache 2.2
+  <FilesMatch "\.(json|pem|key)$">
+    Order allow,deny
+    Deny from all
+  </FilesMatch>
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# 4) Downgrade / eski HTTP istekleri için gereksiz yükleme yok
+#    (Herhangi bir .well-known dışı varlık için otomatik index yerine 403)
+# ---------------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Klasör kökü dışında doğrudan dizin erişimini engelle
+  RewriteRule (^|/)\.(?!well-known/)[a-zA-Z0-9_.]+$ - [F,L]
+</IfModule>

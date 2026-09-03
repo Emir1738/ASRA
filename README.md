@@ -8,7 +8,13 @@ Site (PHP) + Android uygulaması (WebView, Kotlin) + tam E2E test altyapısı.
 |---|---|
 | `asra-site-fix/` | **Güncel site** — `auth.php` (API), `index.html` (arayüz), `.htaccess` |
 | `asra-apk-build/` | Android kaynak (Kotlin) + derlenmiş **`asra-1.7.1.apk`** (imzalı) |
-| `_tests/` | BASH/CLI + Chromium E2E suite'leri ve ortam kurulumu |
+| `_tests/` | BASH/CLI + Chromium E2E suite'leri |
+| `.setup/` | Test koşucusu ve ortam kurulum betikleri (`run-tests.sh`, `install-testenv.sh`, `install-toolchain.sh`) — çalışma alanında `/home/user/.setup/` yolunda durur |
+| `asra-yukleme/` | Sunucuya yüklenecek **hazır paket**: `auth.php` + `index.html` + `.htaccess` + APK + `YUKLEME-NOTU.txt`. Kaynak `asra-site-fix/`'tir; bu klasör onun kopyasıdır ve her değişiklikte yeniden eşitlenir (sha256 ile doğrulanır) |
+
+Depoya **girmeyen** çalışma alanı klasörleri: `secrets/` (Firebase servis hesabı
+özel anahtarı) ve `uploads/` (kullanıcı yüklemeleri). İkisi de `.gitignore` ile
+açıkça engellenmiştir.
 
 ## Güncel özellikler
 

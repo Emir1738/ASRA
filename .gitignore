@@ -16,3 +16,10 @@ asra-fcm-service-account.json
 
 # Dağıtım yapılandırması (veritabanı parolası) ASLA depoya girmez
 asra-site-fix/asra-config.php
+
+# ÇALIŞMA ALANI GİZLİLERİ: Firebase servis hesabı anahtarları ve kullanıcı
+# yüklemeleri ASLA depoya girmez (özel anahtar sızıntısı).
+/secrets/
+/uploads/
+**/*-firebase-adminsdk*.json
+**/google-services.json
