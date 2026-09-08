@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-3i+LuZaFVJ+SSWU/uLOo7lK7JcAlxF4JM4rU6fGEgyY='; script-src 'self' 'sha256-Bm1Qn6k0f7hxzDCSUwLuna/FiyHbQmomFXjsEnhq3zc='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-aCJi/6WSe8xD5uQIEshH2B/h/HTB9JPRsZZZ0jnFjrQ='; script-src 'self' 'sha256-kmwzOB/bAupQPp0VnSFx1lE8k9/+z6j11dpVyrQ5NqM='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Asra Chat</title>
   <style>
 @charset "UTF-8";
@@ -559,6 +559,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); outline
 .modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-top: 20px; }
 .invite-code-box { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin: 15px 0; }
 .invite-code { min-height: 50px; overflow: hidden; padding: 14px; border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: 12px; color: var(--accent); background: var(--accent-soft); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .84rem; font-weight: 760; overflow-wrap: anywhere; white-space: normal; word-break: break-word; }
+.approval-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 0 0 12px; }
+.approval-status { margin: 0; font-size: 13px; opacity: .78; }
+.approval-warn { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; margin: 0 0 12px; border: 1px solid rgba(239, 100, 114, .55); background: rgba(239, 100, 114, .12); border-radius: 12px; font-size: 13px; }
 .viewer-list, .admin-user-list { display: grid; gap: 8px; }
 .viewer-row, .admin-user-row { display: flex; align-items: center; gap: 11px; padding: 11px; border: 1px solid var(--line); border-radius: 13px; background: var(--field); }
 .viewer-row .message-avatar, .admin-user-row .message-avatar { width: 38px; height: 38px; }
@@ -1129,51 +1132,51 @@ a.primary-button, a.secondary-button { text-decoration: none; }
       <div class="brand-lockup">
         <div class="auth-logo-wrap"><img class="auth-logo" data-logo alt="Asra"></div>
         <div>
-          <p class="eyebrow">TOPLULUK MESAJLAŞMASI</p>
+          <p class="eyebrow" data-i18n="authEyebrow">TOPLULUK MESAJLAŞMASI</p>
           <h1 id="auth-title">Asra Chat</h1>
-          <p id="auth-description" class="muted">Topluluğa katılmak için geçerli davetiye kodunuzu doğrulayın.</p>
+          <p id="auth-description" class="muted" data-i18n="authDescription">Topluluğa katılmak için geçerli davetiye kodunuzu doğrulayın.</p>
         </div>
       </div>
 
       <form id="invite-form" class="auth-form" autocomplete="off">
-        <label for="invite-code">Davetiye kodu</label>
+        <label for="invite-code" data-i18n="inviteCode">Davetiye kodu</label>
         <div class="field-with-action">
-          <input id="invite-code" name="code" type="text" maxlength="64" required spellcheck="false" autocapitalize="characters" placeholder="Davet kodunuzu girin">
-          <button class="primary-button" type="submit">Doğrula</button>
+          <input id="invite-code" name="code" type="text" maxlength="64" required spellcheck="false" autocapitalize="characters" placeholder="Davet kodunuzu girin" data-i18n-ph="inviteCodePh">
+          <button class="primary-button" type="submit" data-i18n="inviteVerify">Doğrula</button>
         </div>
-        <p class="field-note">Giriş ve kayıt seçenekleri yalnızca doğrulamadan sonra açılır.</p>
+        <p class="field-note" data-i18n="inviteGateNote">Giriş ve kayıt seçenekleri yalnızca doğrulamadan sonra açılır.</p>
       </form>
 
-      <section id="auth-options" class="auth-options" hidden aria-label="Hesap işlemleri">
-        <div class="segmented-control" role="tablist" aria-label="Giriş veya kayıt">
-          <button id="login-tab" class="segment active" type="button" role="tab" aria-selected="true">Giriş Yap</button>
-          <button id="register-tab" class="segment" type="button" role="tab" aria-selected="false">Kaydol</button>
+      <section id="auth-options" class="auth-options" hidden aria-label="Hesap işlemleri" data-i18n-aria="authActionsAria">
+        <div class="segmented-control" role="tablist" aria-label="Giriş veya kayıt" data-i18n-aria="authTabsAria">
+          <button id="login-tab" class="segment active" type="button" role="tab" aria-selected="true" data-i18n="tabLogin">Giriş Yap</button>
+          <button id="register-tab" class="segment" type="button" role="tab" aria-selected="false" data-i18n="tabRegister">Kaydol</button>
         </div>
 
         <form id="login-form" class="auth-form" autocomplete="on">
-          <label for="login-username">Kullanıcı adı</label>
+          <label for="login-username" data-i18n="username">Kullanıcı adı</label>
           <input id="login-username" name="username" type="text" minlength="3" maxlength="24" required autocomplete="username">
-          <label for="login-password">Şifre</label>
+          <label for="login-password" data-i18n="password">Şifre</label>
           <div class="password-field">
             <input id="login-password" name="password" type="password" maxlength="128" required autocomplete="current-password">
-            <button class="icon-text-button password-toggle" type="button" aria-label="Şifreyi göster">Göster</button>
+            <button class="icon-text-button password-toggle" type="button" aria-label="Şifreyi göster" data-i18n-aria="showPasswordAria" data-i18n="show">Göster</button>
           </div>
-          <button class="primary-button full" type="submit">Giriş Yap</button>
+          <button class="primary-button full" type="submit" data-i18n="tabLogin">Giriş Yap</button>
         </form>
 
         <form id="register-form" class="auth-form" autocomplete="on" hidden>
-          <label for="register-username">Kullanıcı adı</label>
+          <label for="register-username" data-i18n="username">Kullanıcı adı</label>
           <input id="register-username" name="username" type="text" minlength="3" maxlength="24" pattern="[A-Za-zÀ-ž0-9_]+" required autocomplete="username" aria-describedby="username-rules">
-          <p id="username-rules" class="field-note">3–24 karakter; yalnızca harf, rakam ve alt çizgi.</p>
-          <label for="register-password">Şifre</label>
+          <p id="username-rules" class="field-note" data-i18n="usernameRules">3–24 karakter; yalnızca harf, rakam ve alt çizgi.</p>
+          <label for="register-password" data-i18n="password">Şifre</label>
           <div class="password-field">
             <input id="register-password" name="password" type="password" minlength="10" maxlength="128" required autocomplete="new-password">
-            <button class="icon-text-button password-toggle" type="button" aria-label="Şifreyi göster">Göster</button>
+            <button class="icon-text-button password-toggle" type="button" aria-label="Şifreyi göster" data-i18n-aria="showPasswordAria" data-i18n="show">Göster</button>
           </div>
-          <label for="register-password-confirm">Şifre tekrarı</label>
+          <label for="register-password-confirm" data-i18n="passwordConfirm">Şifre tekrarı</label>
           <input id="register-password-confirm" name="password_confirm" type="password" minlength="10" maxlength="128" required autocomplete="new-password">
-          <p class="field-note">En az 10 karakter; harf, rakam ve özel karakter içermelidir.</p>
-          <button class="primary-button full" type="submit">Hesap Oluştur</button>
+          <p class="field-note" data-i18n="passwordRules">En az 10 karakter; harf, rakam ve özel karakter içermelidir.</p>
+          <button class="primary-button full" type="submit" data-i18n="registerSubmit">Hesap Oluştur</button>
         </form>
       </section>
     </section>
@@ -1183,30 +1186,30 @@ a.primary-button, a.secondary-button { text-decoration: none; }
 
   <div id="app-shell" class="app-shell" hidden>
     <header class="app-header">
-      <button id="back-button" class="round-button" type="button" aria-label="Geri" hidden>
+      <button id="back-button" class="round-button" type="button" aria-label="Geri" data-no-action-lock hidden>
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
       </button>
-      <button id="brand-button" class="header-brand" type="button" aria-label="Ana sayfa">
+      <button id="brand-button" class="header-brand" type="button" aria-label="Ana sayfa" data-no-action-lock>
         <img data-logo alt="">
         <span><strong id="header-title">Asra Chat</strong><small id="header-subtitle">Topluluk</small></span>
       </button>
       <div class="header-actions">
-        <button id="coin-pill" class="coin-pill" type="button" title="AA Coin bakiyesi"><span>AA Coin</span><b id="coin-balance">0</b></button>
-        <span id="connection-state" class="connection-state" title="Bağlantı durumu"><i></i><span>Bağlı</span></span>
-        <button id="menu-button" class="round-button" type="button" aria-label="Menüyü aç" aria-expanded="false">
+        <button id="coin-pill" class="coin-pill" type="button" title="AA Coin bakiyesi" data-i18n-title="coinTitle"><span>AA Coin</span><b id="coin-balance">0</b></button>
+        <span id="connection-state" class="connection-state" title="Bağlantı durumu" data-i18n-title="connTitle"><i></i><span>Bağlı</span></span>
+        <button id="menu-button" class="round-button" type="button" aria-label="Menüyü aç" aria-expanded="false" data-i18n-aria="menuOpenAria">
           <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
         </button>
       </div>
-      <nav id="account-menu" class="account-menu" hidden aria-label="Hesap menüsü">
-        <button type="button" data-menu-action="profile"><span>◎</span> Profilim</button>
-        <button type="button" data-menu-action="invite"><span>⌁</span> Davet Et</button>
-        <button type="button" data-menu-action="shop"><span>◈</span> Mağaza</button>
-        <button type="button" data-menu-action="quests"><span>✦</span> Görevler ve Oyunlar</button>
-        <button type="button" data-menu-action="settings"><span>⚙</span> Ayarlar</button>
-        <button type="button" data-menu-action="admin"><span>◇</span> Admin Paneli</button>
-        <button type="button" data-menu-action="refresh"><span>⟳</span> Yenile</button>
+      <nav id="account-menu" class="account-menu" hidden aria-label="Hesap menüsü" data-i18n-aria="menuAria">
+        <button type="button" data-menu-action="profile"><span>◎</span> <span data-i18n="profile">Profilim</span></button>
+        <button type="button" data-menu-action="invite"><span>⌁</span> <span data-i18n="invite">Davet Et</span></button>
+        <button type="button" data-menu-action="shop"><span>◈</span> <span data-i18n="menuShop">Mağaza</span></button>
+        <button type="button" data-menu-action="quests"><span>✦</span> <span data-i18n="menuQuests">Görevler ve Oyunlar</span></button>
+        <button type="button" data-menu-action="settings"><span>⚙</span> <span data-i18n="settings">Ayarlar</span></button>
+        <button type="button" data-menu-action="admin"><span>◇</span> <span data-i18n="admin">Admin Paneli</span></button>
+        <button type="button" data-menu-action="refresh"><span>⟳</span> <span data-i18n="menuRefresh">Yenile</span></button>
         <hr>
-        <button class="danger-text" type="button" data-menu-action="logout"><span>↪</span> Çıkış Yap</button>
+        <button class="danger-text" type="button" data-menu-action="logout"><span>↪</span> <span data-i18n="logout">Çıkış Yap</span></button>
       </nav>
     </header>
 
@@ -1287,60 +1290,386 @@ const ROOM_CATALOG = [
   ['Asra Biyoloji', 'Canlılar, ekosistemler ve yaşam bilimleri.']
 ];
 
+const SUPPORTED_LANGUAGES = ['tr', 'en'];
+
+/**
+ * Sunucunun döndürdüğü Türkçe cümlelerin yerelleştirme anahtarları.
+ * Eşleme bilerek HATA KODU üzerinden değil CÜMLE üzerinden yapılır: aynı kod
+ * farklı bağlamlarda farklı cümleler taşır (ör. INVALID_CREDENTIALS hem
+ * "Kullanıcı adı veya şifre hatalı." hem "Güncel şifre hatalı." döner), kod
+ * eşlemesi bu ayrımı yok ederdi. Eşleşmeyen cümleler olduğu gibi gösterilir.
+ */
+const SERVER_MESSAGE_I18N = {
+  'Kullanıcı adı veya şifre hatalı.': 'srvBadCredentials',
+  'Güncel şifre hatalı.': 'srvCurrentPwWrong',
+  'Oturum açmanız gerekiyor.': 'srvNeedLogin',
+  'Oturum geçersiz.': 'srvSessionInvalid',
+  'Yasaklandın.': 'srvBanned',
+  'Bu cihazın ve ağ kimliğinin platforma erişimi engellenmiştir.': 'srvDeviceBanned',
+  'Hesabın yönetici onayı bekliyor.': 'srvPending',
+  'Yetkili tarafından şifreniz değiştirildi, oturum açmalısınız.': 'srvPwChangedByMod',
+  'Bu kullanıcı adı zaten kullanılıyor.': 'srvUsernameTaken',
+  'Kullanıcı bulunamadı.': 'srvUserNotFound',
+  'Kullanıcı adı en az 3 karakter olmalıdır.': 'srvUsernameShort',
+  'Kullanıcı adı yalnızca harf, rakam ve alt çizgi içerebilir; boşluk içeremez.': 'srvUsernameChars',
+  'Kullanıcı adı 30 günde yalnızca bir kez değiştirilebilir.': 'srvUsernameLocked',
+  'Şifreler eşleşmiyor.': 'srvPwMismatch',
+  'Şifre 10 ile 128 karakter arasında olmalıdır.': 'srvPwLength',
+  'Şifre alanları geçersiz.': 'srvPwFields',
+  'Şifre boşluk içeremez.': 'srvPwNoSpace',
+  'Şifre en az bir harf, bir rakam ve bir özel karakter içermelidir.': 'srvPwCharset',
+  'Yeni şifre güncel şifreden farklı olmalıdır.': 'srvPwSame',
+  'Davetiye kodu geçersiz veya süresi dolmuş.': 'srvInviteInvalid',
+  'Önce geçerli bir davetiye kodunu doğrulayın.': 'srvInviteRequired',
+  'Bu davet kodu bir kişi tarafından kullanıldı. Kod sahibine saat başında yeni kod verilecek.': 'srvInviteUsed',
+  'Bu cihazda daha önce bir hesap kullanıldı. Güvenlik nedeniyle aynı cihazdan yeni hesap oluşturulamaz.': 'srvDeviceUsed',
+  'Bu cihaz başka bir hesaba bağlıdır. Yalnızca cihazın mevcut hesabıyla giriş yapılabilir.': 'srvDeviceBound',
+  'Mesaj veya resim ekleyin.': 'srvEmptyMessage',
+  'Mesaj bulunamadı.': 'srvMsgNotFound',
+  'Mesaj bulunamadı veya daha önce silindi.': 'srvMsgGone',
+  'Yalnızca kendi mesajınızı silebilirsiniz.': 'srvNotOwner',
+  'Geri alma süresi doldu. Mesaj kalıcı olarak silindi.': 'srvUndoExpired',
+  'Mesajın geri alma süresi henüz dolmadı.': 'srvDeleteCooldown',
+  'Bu mesaj için silme işlemi zaten devam ediyor.': 'srvDeletePending',
+  'Mesaj silme işlemi başlatılamadı.': 'srvDeleteFailed',
+  'Bu mesaj için bekleyen bir silme işlemi bulunmuyor.': 'srvDeleteNotPending',
+  'Resim en fazla 5 MB olabilir.': 'srvImageTooLarge',
+  'Bir profil resmi seçin.': 'srvImageRequired',
+  'Resim yüklenemedi. Lütfen yeniden deneyin.': 'srvUploadFailed',
+  'Geçersiz dosya yüklemesi.': 'srvUploadInvalid',
+  'Tek seferde yalnızca bir resim yüklenebilir.': 'srvUploadSingle',
+  'Dosya geçerli bir resim değil.': 'srvNotImage',
+  'Dosya adı çalıştırılabilir uzantı içeremez.': 'srvBadFilename',
+  'Resim boyutları desteklenen sınırların dışında.': 'srvBadDimensions',
+  'Tema veya dil seçimi geçersiz.': 'srvBadSettings',
+  'Gizlilik ayarı geçersiz.': 'srvBadPrivacy',
+  'Çok fazla deneme yapıldı. Lütfen daha sonra tekrar deneyin.': 'srvTooManyAttempts',
+  'Çok hızlı istek gönderiliyor. Lütfen bir an bekleyin.': 'srvTooFast',
+  'İstek sınırı aşıldı. Lütfen kısa bir süre bekleyin.': 'srvRateLimit',
+  'Güvenlik doğrulaması yenilendi, işlem tekrarlanıyor.': 'srvCsrf',
+  'Bu işlem için izin verilmeyen istek yöntemi.': 'srvMethod',
+  'Sunucu şu anda yoğun. Birkaç saniye sonra otomatik olarak yeniden denenecek.': 'srvServiceBusy',
+  'İstek gövdesi çok büyük.': 'srvTooLarge',
+  'Geçersiz JSON verisi.': 'srvBadJson',
+  'İstek gövdesi nesne olmalıdır.': 'srvBadBody',
+  'Medya bulunamadı.': 'srvMediaNotFound',
+  'Bu medyaya erişim yetkiniz yok.': 'srvMediaForbidden',
+  'Çerçeve bulunamadı.': 'srvFrameNotFound',
+  'Bu çerçeve zaten sende.': 'srvFrameOwned',
+  'Bu çerçeve sende yok.': 'srvFrameNotOwned',
+  'Bu oyun için yeni ödül almadan önce kısa süre bekle.': 'srvGameCooldown',
+  'Bu görev ödülü zaten alındı.': 'srvQuestClaimed',
+  'Görev henüz tamamlanmadı.': 'srvQuestNotDone',
+  'Görev bulunamadı.': 'srvQuestNotFound',
+  'Yalnızca JPG, PNG ve WEBP resimleri kabul edilir.': 'photoType',
+  'Sunucu kaynak koruması etkinleşti. İstekler otomatik olarak yavaşlatıldı.': 'errThrottle',
+};
+
 const I18N = {
   tr: {
-    welcome: "Asra'ya hoş geldin",
-    welcomeText: 'İlgi alanına uygun bir odaya katıl ve toplulukla konuşmaya başla.',
-    rooms: 'Topluluk odaları', profile: 'Profilim', settings: 'Ayarlar', invite: 'Davet Et', admin: 'Admin Paneli',
-    logout: 'Çıkış Yap', save: 'Kaydet', cancel: 'Vazgeç', close: 'Kapat', copy: 'Kopyala', copied: 'Davet kodu kopyalandı.',
-    loading: 'Yükleniyor', checking: 'Kontrol ediliyor, güvenlik bakılıyor', connected: 'Bağlı', offline: 'Bağlantı yok',
-    noMessages: 'Henüz mesaj yok', noMessagesText: 'Bu odadaki ilk mesajı sen gönder.', messagePlaceholder: 'Mesaj yaz…',
+    welcome: 'Asra\'ya hoş geldin', welcomeText: 'İlgi alanına uygun bir odaya katıl ve toplulukla konuşmaya başla.',
+    rooms: 'Topluluk odaları', profile: 'Profilim',
+    settings: 'Ayarlar', invite: 'Davet Et',
+    admin: 'Admin Paneli', logout: 'Çıkış Yap',
+    save: 'Kaydet', cancel: 'Vazgeç',
+    close: 'Kapat', copy: 'Kopyala',
+    copied: 'Davet kodu kopyalandı.', loading: 'Yükleniyor',
+    checking: 'Kontrol ediliyor, güvenlik bakılıyor', connected: 'Bağlı',
+    offline: 'Bağlantı yok', noMessages: 'Henüz mesaj yok',
+    noMessagesText: 'Bu odadaki ilk mesajı sen gönder.', messagePlaceholder: 'Mesaj yaz…',
     send: 'Gönder', seenBy: 'gören',
-    theme: 'Tema', language: 'Dil', dark: 'Karanlık', light: 'Aydınlık', readReceipts: 'Görüldü gönder',
-    lastSeen: 'Son görülme ve çevrimiçi', deleteAccount: 'Hesabımı sil', profileUpdated: 'Profil güncellendi.',
-    settingsSaved: 'Ayarlar kaydedildi.', announcement: 'Duyuru Geç', users: 'Kullanıcılar', search: 'Kullanıcı ara',
-    online: 'Çevrimiçi', hidden: 'Gizli', why: 'Neden?', back: 'Geri',
-    updateNudge: 'Uygulamanın sürümü eski: arka plan bildirimleri sunucuda fazla kaynak tüketiyor. En yeni sürüme güncelle.'
+    theme: 'Tema', language: 'Dil',
+    dark: 'Karanlık', light: 'Aydınlık',
+    readReceipts: 'Görüldü gönder', lastSeen: 'Son görülme ve çevrimiçi',
+    deleteAccount: 'Hesabımı sil', profileUpdated: 'Profil güncellendi.',
+    security: 'Güvenlik', changePassword: 'Şifre Değiştir',
+    currentPassword: 'Güncel şifre', newPassword: 'Yeni şifre',
+    newPasswordConfirm: 'Yeni şifre (tekrar)', forgotPassword: 'Şifremi unuttum',
+    passwordChanged: 'Şifren değiştirildi.', show: 'Göster',
+    hide: 'Gizle', settingsSaved: 'Ayarlar kaydedildi.',
+    announcement: 'Duyuru Geç', users: 'Kullanıcılar',
+    search: 'Kullanıcı ara', online: 'Çevrimiçi',
+    hidden: 'Gizli', why: 'Neden?',
+    back: 'Geri', updateNudge: 'Uygulamanın sürümü eski: arka plan bildirimleri sunucuda fazla kaynak tüketiyor. En yeni sürüme güncelle.',
+    inviteCode: 'Davetiye kodu', inviteCodePh: 'Davet kodunuzu girin',
+    inviteVerify: 'Doğrula', inviteGateNote: 'Giriş ve kayıt seçenekleri yalnızca doğrulamadan sonra açılır.',
+    authActionsAria: 'Hesap işlemleri', authTabsAria: 'Giriş veya kayıt',
+    tabLogin: 'Giriş Yap', tabRegister: 'Kaydol',
+    username: 'Kullanıcı adı', password: 'Şifre',
+    passwordConfirm: 'Şifre tekrarı', showPasswordAria: 'Şifreyi göster',
+    usernameRules: '3–24 karakter; yalnızca harf, rakam ve alt çizgi.', passwordRules: 'En az 10 karakter; harf, rakam ve özel karakter içermelidir.',
+    registerSubmit: 'Hesap Oluştur', connTitle: 'Bağlantı durumu',
+    coinTitle: 'AA Coin bakiyesi', menuOpenAria: 'Menüyü aç',
+    menuAria: 'Hesap menüsü', menuShop: 'Mağaza',
+    menuQuests: 'Görevler ve Oyunlar', menuRefresh: 'Yenile',
+    chatSubtitle: 'Güvenli ve konu odaklı sohbet', chatRules: 'Konu dışına çıkmayın; hakaret, aşağılama ve kişisel saldırı yasaktır.',
+    retentionCalculating: 'hesaplanıyor…', retentionLine: 'Duyurular dâhil {hours} saat sonra temizlenir',
+    roomEmpty: 'oda boş', roomEmptyFirst: 'oda boş · ilk mesajdan sonra başlar',
+    roomHint: 'Topluluk odası · Yeni mesajlar en geç 1 dakikada görünür', allRead: 'her şeyi okundu',
+    dayToday: 'Bugün', dayYesterday: 'Dün',
+    systemMessage: 'Sistem mesajı', deleteMessage: 'Mesajı sil',
+    deleteMessageAria: 'Mesajı silme bölümünü aç', deleteKicker: 'KALICI SİLME İŞLEMİ',
+    deleteCopyConfirm: 'Mesajınızı kalıcı olarak silmek için “Sil” düğmesine basın. İşlem başlatıldıktan sonra 4 saniye içinde geri alabilirsiniz.', deleteCopyAsk: 'Mesajınızı silmek istiyorsanız “Sil” düğmesine basın.',
+    deleting: 'Mesaj tüm kullanıcılardan kaldırılıyor.', sendRetry: 'Mesaj gönderilemedi, yeniden deneniyor…',
+    sendingNote: 'Mesaj sunucuya iletiliyor, görenler birazdan açılacak.', sharedImage: 'Paylaşılan resim',
+    imageFail: 'Görsel şu anda yüklenemedi.', viewers: 'Görenler',
+    viewersKicker: 'OKUNDU BİLGİSİ', viewersEmpty: 'Bu mesaj için görünür bir okundu bilgisi bulunmuyor.',
+    retentionPolicy: 'Mesaj saklama politikası', retentionPolicyKicker: 'GİZLİLİK VE PERFORMANS',
+    zoomIn: 'Yakınlaştır', zoomOut: 'Uzaklaştır',
+    zoomFit: 'Sığdır', closeImage: 'Görseli kapat',
+    imageViewer: 'Görsel görüntüleyici', imagePreviewKicker: 'GÖRSEL ÖNİZLEME',
+    zoomHint: 'Yakınlaştırmak için tekerlek, çift dokunuş veya düğmeleri kullan.', imagePreviewAria: 'Seçilen resim önizlemesi',
+    remove: 'Kaldır', settingsDesc: 'Görünüm, dil ve gizlilik tercihlerinizi yönetin.',
+    readReceiptsDesc: 'Mesajları okuduğunuzda görenler listesinde görünün.', lastSeenDesc: 'Profilinizde çevrimiçi ve son görülme bilgisi gösterilsin.',
+    securityDesc: 'Güncel şifreni doğrulayıp yeni şifreni iki kez girerek değiştirebilirsin. Değişiklikten sonra diğer cihazlardaki oturumların kapatılır, bu cihazda oturumun açık kalır.', deleteAccountDesc: 'Hesabınız silinirse geri getirilemez. Tüm mesajlarınız ve verileriniz kalıcı olarak silinecektir. Emin misiniz?',
+    deleteAccountTitle: 'Hesabı kalıcı olarak sil', deleteAccountKicker: 'GERİ ALINAMAZ İŞLEM',
+    deletePermanent: 'Kalıcı Olarak Sil', changePasswordCopy: 'Güncel şifreni doğrula, sonra yeni şifreni iki kez gir. Kurallar kayıtla aynı: en az 10 karakter, boşluk yok, en az bir harf + bir rakam + bir özel karakter.',
+    forgotP1: 'Şifreni unutman sorun değil: hesabın, mesajların ve tüm verilerin yerinde duruyor, hiçbir şey silinmedi.', forgotP2: 'Yeni şifreni almak için yetkiliyle iletişime geçmen yeterli. Kullanıcı adını belirt; hesabın doğrulandıktan sonra yetkili senin için yeni bir şifre belirleyip sana iletir.',
+    forgotP3: 'Şifre yenilemeyi bilerek yalnızca yetkili üzerinden yürütüyoruz. Böylece tanımadığın birinin senin adına şifre belirlemesinin önüne geçiliyor ve hesabın başkasının eline geçmiyor.', forgotP4: 'Yeni şifren belirlendiğinde açık oturumların güvenlik gereği kapatılır. Giriş yaptıktan sonra şifreni Ayarlar > Güvenlik bölümünden istediğin zaman kendin değiştirebilirsin.',
+    ruleCurrentRequired: 'Güncel şifre zorunludur.', ruleMismatch: 'Yeni şifreler birbiriyle eşleşmiyor.',
+    ruleLength: 'Yeni şifre 10 ile 128 karakter arasında olmalıdır.', ruleNoSpace: 'Yeni şifre boşluk içeremez.',
+    ruleCharset: 'Yeni şifre en az bir harf, bir rakam ve bir özel karakter içermelidir.', ruleSame: 'Yeni şifre güncel şifreden farklı olmalıdır.',
+    memberKicker: 'ASRA ÜYESİ', joined: 'Katılım',
+    birthday: 'Doğum günü', lastSeenAt: 'Son görülme: {when}',
+    editProfile: 'Profili düzenle', usernameNote: 'Kullanıcı adınızı 30 günde bir değiştirebilirsiniz.',
+    about: 'Hakkında', aboutHint: 'Kendinizden kısaca bahsedin.',
+    photoAdd: 'Profil resmi ekle veya değiştir', photoRemove: 'Resmi kaldır',
+    photoUpdated: 'Profil resmi güncellendi.', photoRemoved: 'Profil resmi kaldırıldı.',
+    photoType: 'Yalnızca JPG, PNG ve WEBP resimleri kabul edilir.', inviteShare: 'Bu kodu topluluğa davet etmek istediğiniz kişiyle paylaşın. Her kod yalnızca bir kişiyi içeri alır.',
+    inviteRotate: 'Davet kodun saat başında değiştirilecek, kalan süre: {left}', inviteUsedNote: 'Kodun kullanıldığı için gösterilmiyor ve eski kod artık geçersiz.',
+    inviteUsedAt: 'Kullanıldığı zaman: {when}', inviteNextAt: 'Yeni davet kodun saat başında verilecek, kalan süre: {left}',
+    inviteWhyTitle: 'Davet kodları neden yenilenir?', inviteWhyKicker: 'GÜVENLİK POLİTİKASI',
+    inviteCodeKicker: 'DAVETİYE KODUNUZ', banPermTitle: 'Kalıcı yasaklandın',
+    banPermCopy: 'Bu hesaba kalıcı erişim yasağı uygulanmıştır.', banPerm: 'Kalıcı ban',
+    banTempTitle: 'Yasaklandın', banTempCopy: 'Bu hesaba süreli erişim yasağı uygulanmıştır.',
+    banRemaining: 'Yasağın bitmesine kalan süre', banEnds: 'Bitiş zamanı',
+    deletedTitle: 'Hesabın silindi', deletedCopy: 'Bu hesap ve ilişkili tüm veriler kalıcı olarak silinmiştir.',
+    revokedTitle: 'Şifreniz değiştirildi', revokedCopy: 'Yetkili tarafından şifreniz değiştirildi, oturum açmalısınız.',
+    revokedNote: 'Eski şifreniz ve önceki açık oturumunuz geçersiz hâle getirildi.', openSession: 'Oturum Aç',
+    exit: 'Çık', refreshTitle: 'Yenilemek ister misin? Bir hata gördüğünde veya yeni güncelleme geldiğinde yenilersen en güncel sürümü alırsın.',
+    refreshNote: 'Oturumun açık kalır; mesajların ve hesabın etkilenmez. Yalnızca uygulama yeniden yüklenir.', refreshKicker: 'UYGULAMAYI YENİLE',
+    refreshing: 'Güncel sürüm alınıyor', closingSession: 'Oturum kapatılıyor',
+    errNetwork: 'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.', errTimeout: 'Sunucu zamanında yanıt vermedi. İstekler otomatik olarak yavaşlatıldı.',
+    errThrottle: 'Sunucu kaynak koruması etkinleşti. İstekler otomatik olarak yavaşlatıldı.', errThrottleShort: 'Sunucu koruma bekleme süresi etkin.',
+    errBudget: 'Dakikalık arka plan istek bütçesi doldu.', errSlow: 'Bağlantı geçici olarak yavaşladı. Oturumun korunuyor ve sistem otomatik yeniden deniyor.',
+    errInternal: 'İşlem geçici olarak tamamlanamadı. Lütfen kısa süre sonra tekrar dene.', errHtml: 'Sunucu JSON yerine HTML sayfası döndürdü (HTTP {status}).',
+    errHtmlHint: 'auth.php yüklenmemiş, yanlış klasörde ya da PHP çalışmıyor olabilir.', errDiag: 'Tanı: /auth.php?action=health',
+    errNotJson: 'Sunucu beklenen JSON cevabı döndürmedi. İşlem: {action}. HTTP {status}.', errFailed: 'İstek tamamlanamadı.',
+    errLeader: 'Arka plan güncellemelerini diğer açık sekme yönetiyor.',     srvBadCredentials: 'Kullanıcı adı veya şifre hatalı.', srvCurrentPwWrong: 'Güncel şifre hatalı.',
+    srvNeedLogin: 'Oturum açmanız gerekiyor.', srvSessionInvalid: 'Oturum geçersiz.',
+    srvBanned: 'Yasaklandın.', srvDeviceBanned: 'Bu cihazın ve ağ kimliğinin platforma erişimi engellenmiştir.',
+    srvPending: 'Hesabın yönetici onayı bekliyor.', srvPwChangedByMod: 'Yetkili tarafından şifreniz değiştirildi, oturum açmalısınız.',
+    srvUsernameTaken: 'Bu kullanıcı adı zaten kullanılıyor.', srvUserNotFound: 'Kullanıcı bulunamadı.',
+    srvUsernameShort: 'Kullanıcı adı en az 3 karakter olmalıdır.', srvUsernameChars: 'Kullanıcı adı yalnızca harf, rakam ve alt çizgi içerebilir; boşluk içeremez.',
+    srvUsernameLocked: 'Kullanıcı adı 30 günde yalnızca bir kez değiştirilebilir.', srvPwMismatch: 'Şifreler eşleşmiyor.',
+    srvPwLength: 'Şifre 10 ile 128 karakter arasında olmalıdır.', srvPwFields: 'Şifre alanları geçersiz.',
+    srvPwNoSpace: 'Şifre boşluk içeremez.', srvPwCharset: 'Şifre en az bir harf, bir rakam ve bir özel karakter içermelidir.',
+    srvPwSame: 'Yeni şifre güncel şifreden farklı olmalıdır.', srvInviteInvalid: 'Davetiye kodu geçersiz veya süresi dolmuş.',
+    srvInviteRequired: 'Önce geçerli bir davetiye kodunu doğrulayın.', srvInviteUsed: 'Bu davet kodu bir kişi tarafından kullanıldı. Kod sahibine saat başında yeni kod verilecek.',
+    srvDeviceUsed: 'Bu cihazda daha önce bir hesap kullanıldı. Güvenlik nedeniyle aynı cihazdan yeni hesap oluşturulamaz.', srvDeviceBound: 'Bu cihaz başka bir hesaba bağlıdır. Yalnızca cihazın mevcut hesabıyla giriş yapılabilir.',
+    srvEmptyMessage: 'Mesaj veya resim ekleyin.', srvMsgNotFound: 'Mesaj bulunamadı.',
+    srvMsgGone: 'Mesaj bulunamadı veya daha önce silindi.', srvNotOwner: 'Yalnızca kendi mesajınızı silebilirsiniz.',
+    srvUndoExpired: 'Geri alma süresi doldu. Mesaj kalıcı olarak silindi.', srvDeleteCooldown: 'Mesajın geri alma süresi henüz dolmadı.',
+    srvDeletePending: 'Bu mesaj için silme işlemi zaten devam ediyor.', srvDeleteFailed: 'Mesaj silme işlemi başlatılamadı.',
+    srvDeleteNotPending: 'Bu mesaj için bekleyen bir silme işlemi bulunmuyor.', srvImageTooLarge: 'Resim en fazla 5 MB olabilir.',
+    srvImageRequired: 'Bir profil resmi seçin.', srvUploadFailed: 'Resim yüklenemedi. Lütfen yeniden deneyin.',
+    srvUploadInvalid: 'Geçersiz dosya yüklemesi.', srvUploadSingle: 'Tek seferde yalnızca bir resim yüklenebilir.',
+    srvNotImage: 'Dosya geçerli bir resim değil.', srvBadFilename: 'Dosya adı çalıştırılabilir uzantı içeremez.',
+    srvBadDimensions: 'Resim boyutları desteklenen sınırların dışında.', srvBadSettings: 'Tema veya dil seçimi geçersiz.',
+    srvBadPrivacy: 'Gizlilik ayarı geçersiz.', srvTooManyAttempts: 'Çok fazla deneme yapıldı. Lütfen daha sonra tekrar deneyin.',
+    srvTooFast: 'Çok hızlı istek gönderiliyor. Lütfen bir an bekleyin.', srvRateLimit: 'İstek sınırı aşıldı. Lütfen kısa bir süre bekleyin.',
+    srvCsrf: 'Güvenlik doğrulaması yenilendi, işlem tekrarlanıyor.', srvMethod: 'Bu işlem için izin verilmeyen istek yöntemi.',
+    srvServiceBusy: 'Sunucu şu anda yoğun. Birkaç saniye sonra otomatik olarak yeniden denenecek.', srvTooLarge: 'İstek gövdesi çok büyük.',
+    srvBadJson: 'Geçersiz JSON verisi.', srvBadBody: 'İstek gövdesi nesne olmalıdır.',
+    srvMediaNotFound: 'Medya bulunamadı.', srvMediaForbidden: 'Bu medyaya erişim yetkiniz yok.',
+    srvFrameNotFound: 'Çerçeve bulunamadı.', srvFrameOwned: 'Bu çerçeve zaten sende.',
+    srvFrameNotOwned: 'Bu çerçeve sende yok.', srvGameCooldown: 'Bu oyun için yeni ödül almadan önce kısa süre bekle.',
+    srvQuestClaimed: 'Bu görev ödülü zaten alındı.', srvQuestNotDone: 'Görev henüz tamamlanmadı.',
+    srvQuestNotFound: 'Görev bulunamadı.',
+    deletingTitle: 'Siliniyor', notifNewMessage: 'Yeni bir kişi mesaj yazdı',
+    deleteBtn: 'Sil', imageAttached: 'Mesaja eklenen resim', yourImage: 'Paylaştığın görsel', imageLabel: 'Görsel',
+    inviteUsedBy: 'Davet kodunla biri giriş yaptı, yeni davet kodu gelene kadar giriş yapamazsın. Davetin ile giren kişi: {who}',
+    unknownUser: 'Bilinmiyor', inviteResetToast: 'Yönetici tarafından davet kodun sıfırlandı ve değiştirildi.',
+    coinDebtDue: 'Son ödeme: {when}.',
+    coinDebtToast: 'YARGIÇ: Borca girdin, hesabındaki coinler alındı ve paran yetmediyse hesabın eksiye düştü. Hızlı bir şekilde öde, 1 ay süren var. Görevler sana daha fazla verecek.',
+    errThrottleHttp: 'Sunucu kaynak koruması etkinleşti. İstekler otomatik olarak yavaşlatıldı. (HTTP {status})',
+    errRefSuffix: ' (Kod: {ref})', reasonLabel: 'Neden', notSpecified: 'Belirtilmedi',
+    statusLabel: 'Durum', userFallback: 'Kullanıcı',
+    profileHeader: 'Profil', sharedImageAlt: 'Paylaşılan görsel',
+    photoSize: 'Profil resmi en fazla 5 MB olabilir.', usernameNextChange: 'Yeni değişiklik tarihi: {when}',
+    submittedAt: 'Gönderim: {when}', reasonPh: 'Örneğin: astrofotoğraf ve astronomi odalarında öğrenmek, paylaşmak istiyorum.',
+    reasonTooShort: 'Katılma nedenini biraz daha açık yaz.', applicationSent: 'Başvurun yetkili paneline düştü.',
+    reapplyAt: 'Tekrar başvuru zamanı: {when}.', shopTitle: 'AA Coin Mağazası',
+    shopSubtitle: 'Çerçeveler ve özel görünümler', shopEyebrow: 'MAĞAZA',
+    shopBalance: 'Bakiyen: {amount} AA Coin. Fiyatlar her saat 200-1000 AA Coin arasında otomatik yenilenir.',
+    equipped: 'Takılı', unequip: 'Çıkart', equip: 'Tak', buy: 'Satın al',
+    settingsSubtitle: 'Hesap ve gizlilik', inviteVerified: 'Davetiye kodu doğrulandı.',
+    refreshingNow: 'Yenileniyor', secureConn: 'Güvenli bağlantı hazırlanıyor',
+    protectionActive: 'Sunucu koruması etkin', applyingUpdate: 'Güncelleme uygulanıyor',
+    sessionKept: 'Aktif oturumunuz korunuyor, {seconds} saniye sonra yeniden bağlanılacak',
+    authEyebrow: 'TOPLULUK MESAJLAŞMASI', authDescription: 'Topluluğa katılmak için geçerli davetiye kodunuzu doğrulayın.',
+    imageZoomHint: 'Görseli tam ekranda açıp yakınlaştırabilirsin.', messageRestored: 'Mesaj geri getirildi.',
+    messageDeleted: 'Mesaj silindi.', approvalReviewing: 'BAŞVURU İNCELENİYOR', approvalLastStep: 'SON ADIM',
+    approvalPendingTitle: 'Başvurun yetkili panelinde', whyJoinTitle: 'Neden katılmak istiyorsun?',
+    approvalWaiting: 'Gönderdiğin neden yetkili paneline düştü. İnceleme tamamlanınca hesabın açılır. 15 gün içinde yanıtlanmazsa başvuru kapanır; bu durumda 5 gün sonra yeniden yazabilirsin.',
+    approvalShortHonest: 'Kısa ve dürüst yaz. Gönder’e basınca başvurun doğrudan yetkili paneline düşer.',
+    approvalChip: 'Yetkili başvurunu okur, kabul veya red kararı verir.',
+    approvalHint: 'En az 8 karakter. Bu metin yalnızca yetkili panelinde görünür.',
+    inviteWhyCopy: 'Güvenlik nedeniyle davet kodları düzenli olarak yenilenir ve her kod yalnızca bir kişiyi içeri alır. Bu sayede platforma yetkisiz erişim engellenir ve topluluğun gizliliği korunur.',
+    inviteUsedKicker: 'DAVET KODUN KULLANILDI',
   },
   en: {
     welcome: 'Welcome to Asra', welcomeText: 'Join a room that matches your interests and start talking with the community.',
-    rooms: 'Community rooms', profile: 'My Profile', settings: 'Settings', invite: 'Invite', admin: 'Admin Panel',
-    logout: 'Log Out', save: 'Save', cancel: 'Cancel', close: 'Close', copy: 'Copy', copied: 'Invite code copied.',
-    loading: 'Loading', checking: 'Checking security', connected: 'Connected', offline: 'Offline',
-    noMessages: 'No messages yet', noMessagesText: 'Send the first message in this room.', messagePlaceholder: 'Write a message…',
+    rooms: 'Community rooms', profile: 'My Profile',
+    settings: 'Settings', invite: 'Invite',
+    admin: 'Admin Panel', logout: 'Log Out',
+    save: 'Save', cancel: 'Cancel',
+    close: 'Close', copy: 'Copy',
+    copied: 'Invite code copied.', loading: 'Loading',
+    checking: 'Checking security', connected: 'Connected',
+    offline: 'Offline', noMessages: 'No messages yet',
+    noMessagesText: 'Send the first message in this room.', messagePlaceholder: 'Write a message…',
     send: 'Send', seenBy: 'seen',
-    theme: 'Theme', language: 'Language', dark: 'Dark', light: 'Light', readReceipts: 'Send read receipts',
-    lastSeen: 'Last seen and online', deleteAccount: 'Delete my account', profileUpdated: 'Profile updated.',
-    settingsSaved: 'Settings saved.', announcement: 'Announcement', users: 'Users', search: 'Search users',
-    online: 'Online', hidden: 'Hidden', why: 'Why?', back: 'Back',
-    updateNudge: 'Your app version is old: background notifications use extra server resources. Please update to the latest version.'
+    theme: 'Theme', language: 'Language',
+    dark: 'Dark', light: 'Light',
+    readReceipts: 'Send read receipts', lastSeen: 'Last seen and online',
+    deleteAccount: 'Delete my account', profileUpdated: 'Profile updated.',
+    security: 'Security', changePassword: 'Change password',
+    currentPassword: 'Current password', newPassword: 'New password',
+    newPasswordConfirm: 'New password (repeat)', forgotPassword: 'Forgot my password',
+    passwordChanged: 'Your password has been changed.', show: 'Show',
+    hide: 'Hide', settingsSaved: 'Settings saved.',
+    announcement: 'Skip announcement', users: 'Users',
+    search: 'Search users', online: 'Online',
+    hidden: 'Hidden', why: 'Why?',
+    back: 'Back', updateNudge: 'Your app version is old: background notifications use extra server resources. Please update to the latest version.',
+    inviteCode: 'Invite code', inviteCodePh: 'Enter your invite code',
+    inviteVerify: 'Verify', inviteGateNote: 'Sign-in and registration unlock only after verification.',
+    authActionsAria: 'Account actions', authTabsAria: 'Sign in or register',
+    tabLogin: 'Sign In', tabRegister: 'Register',
+    username: 'Username', password: 'Password',
+    passwordConfirm: 'Repeat password', showPasswordAria: 'Show password',
+    usernameRules: '3–24 characters; letters, digits and underscores only.', passwordRules: 'At least 10 characters; must include a letter, a digit and a special character.',
+    registerSubmit: 'Create Account', connTitle: 'Connection status',
+    coinTitle: 'AA Coin balance', menuOpenAria: 'Open menu',
+    menuAria: 'Account menu', menuShop: 'Shop',
+    menuQuests: 'Quests & Games', menuRefresh: 'Refresh',
+    chatSubtitle: 'Safe, topic-focused chat', chatRules: 'Stay on topic; insults, belittling and personal attacks are forbidden.',
+    retentionCalculating: 'calculating…', retentionLine: 'Including announcements, cleared after {hours} hours',
+    roomEmpty: 'room empty', roomEmptyFirst: 'room empty · starts after the first message',
+    roomHint: 'Community room · new messages appear within a minute', allRead: 'read everything',
+    dayToday: 'Today', dayYesterday: 'Yesterday',
+    systemMessage: 'System message', deleteMessage: 'Delete message',
+    deleteMessageAria: 'Open the delete-message section', deleteKicker: 'PERMANENT DELETION',
+    deleteCopyConfirm: 'Press “Delete” to permanently remove your message. You can undo it within 4 seconds of starting.', deleteCopyAsk: 'Press “Delete” if you want to remove your message.',
+    deleting: 'Removing the message from everyone.', sendRetry: 'Message failed to send, retrying…',
+    sendingNote: 'Message is being delivered; seen-by opens shortly.', sharedImage: 'Shared image',
+    imageFail: 'The image could not load right now.', viewers: 'Seen by',
+    viewersKicker: 'READ RECEIPTS', viewersEmpty: 'There is no visible read receipt for this message.',
+    retentionPolicy: 'Message retention policy', retentionPolicyKicker: 'PRIVACY & PERFORMANCE',
+    zoomIn: 'Zoom in', zoomOut: 'Zoom out',
+    zoomFit: 'Fit', closeImage: 'Close image',
+    imageViewer: 'Image viewer', imagePreviewKicker: 'IMAGE PREVIEW',
+    zoomHint: 'Use the wheel, double-tap or the buttons to zoom.', imagePreviewAria: 'Preview of the selected image',
+    remove: 'Remove', settingsDesc: 'Manage your appearance, language and privacy preferences.',
+    readReceiptsDesc: 'Appear in the seen-by list when you read messages.', lastSeenDesc: 'Show online and last-seen information on your profile.',
+    securityDesc: 'Verify your current password and enter your new password twice to change it. Other devices are signed out afterwards; this device stays signed in.', deleteAccountDesc: 'If your account is deleted it cannot be restored. All your messages and data will be permanently deleted. Are you sure?',
+    deleteAccountTitle: 'Permanently delete account', deleteAccountKicker: 'IRREVERSIBLE ACTION',
+    deletePermanent: 'Delete Permanently', changePasswordCopy: 'Verify your current password, then enter your new password twice. Same rules as registration: at least 10 characters, no spaces, at least one letter, one digit and one special character.',
+    forgotP1: 'Forgetting your password is fine: your account, your messages and all your data are intact — nothing was deleted.', forgotP2: 'To get a new password, simply contact the administrator. Give them your username; once your account is verified they will set a new password for you and share it with you.',
+    forgotP3: 'Password resets deliberately go through the administrator only. This stops strangers from setting a password on your behalf and keeps your account out of other people’s hands.', forgotP4: 'When your new password is set, open sessions are closed for security. After signing in you can change your password yourself at any time under Settings > Security.',
+    ruleCurrentRequired: 'The current password is required.', ruleMismatch: 'The new passwords do not match.',
+    ruleLength: 'The new password must be between 10 and 128 characters.', ruleNoSpace: 'The new password cannot contain spaces.',
+    ruleCharset: 'The new password must contain at least one letter, one digit and one special character.', ruleSame: 'The new password must be different from the current one.',
+    memberKicker: 'ASRA MEMBER', joined: 'Joined',
+    birthday: 'Birthday', lastSeenAt: 'Last seen: {when}',
+    editProfile: 'Edit profile', usernameNote: 'You can change your username once every 30 days.',
+    about: 'About', aboutHint: 'Briefly describe yourself.',
+    photoAdd: 'Add or change profile photo', photoRemove: 'Remove photo',
+    photoUpdated: 'Profile photo updated.', photoRemoved: 'Profile photo removed.',
+    photoType: 'Only JPG, PNG and WEBP images are accepted.', inviteShare: 'Share this code with the person you want to invite. Each code admits exactly one person.',
+    inviteRotate: 'Your invite code rotates on the hour; time left: {left}', inviteUsedNote: 'Your code is hidden because it was used, and the old code is no longer valid.',
+    inviteUsedAt: 'Used at: {when}', inviteNextAt: 'Your new invite code is issued on the hour; time left: {left}',
+    inviteWhyTitle: 'Why do invite codes rotate?', inviteWhyKicker: 'SECURITY POLICY',
+    inviteCodeKicker: 'YOUR INVITE CODE', banPermTitle: 'You are permanently banned',
+    banPermCopy: 'This account has been permanently banned.', banPerm: 'Permanent ban',
+    banTempTitle: 'You are banned', banTempCopy: 'This account has been temporarily banned.',
+    banRemaining: 'Time left until the ban ends', banEnds: 'Ends at',
+    deletedTitle: 'Account deleted', deletedCopy: 'This account and all related data have been permanently deleted.',
+    revokedTitle: 'Your password was changed', revokedCopy: 'An administrator changed your password; please sign in again.',
+    revokedNote: 'Your old password and your previous session have been invalidated.', openSession: 'Sign in',
+    exit: 'Exit', refreshTitle: 'Want to refresh? Refreshing when you spot a bug or when a new update arrives gets you the latest version.',
+    refreshNote: 'Your session stays open and your messages and account are unaffected. Only the app reloads.', refreshKicker: 'REFRESH THE APP',
+    refreshing: 'Fetching the latest version', closingSession: 'Closing session',
+    errNetwork: 'Cannot reach the server. Check your internet connection.', errTimeout: 'The server did not respond in time. Requests were slowed down automatically.',
+    errThrottle: 'Server resource protection kicked in. Requests were slowed down automatically.', errThrottleShort: 'Server protection cooldown is active.',
+    errBudget: 'The per-minute background request budget is exhausted.', errSlow: 'The connection slowed down temporarily. Your session is safe and the system retries automatically.',
+    errInternal: 'The action could not be completed right now. Please try again in a moment.', errHtml: 'The server returned an HTML page instead of JSON (HTTP {status}).',
+    errHtmlHint: 'auth.php may not be uploaded, may be in the wrong folder, or PHP may not be running.', errDiag: 'Diagnose: /auth.php?action=health',
+    errNotJson: 'The server did not return the expected JSON. Action: {action}. HTTP {status}.', errFailed: 'The request could not be completed.',
+    errLeader: 'Another open tab is handling background updates.',     srvBadCredentials: 'Username or password is incorrect.', srvCurrentPwWrong: 'Your current password is incorrect.',
+    srvNeedLogin: 'You need to sign in.', srvSessionInvalid: 'Your session is invalid.',
+    srvBanned: 'You are banned.', srvDeviceBanned: 'Access to the platform is blocked for this device and network identity.',
+    srvPending: 'Your account is awaiting moderator approval.', srvPwChangedByMod: 'A moderator changed your password; you need to sign in.',
+    srvUsernameTaken: 'This username is already taken.', srvUserNotFound: 'User not found.',
+    srvUsernameShort: 'The username must be at least 3 characters.', srvUsernameChars: 'The username may contain only letters, digits and underscores; it cannot contain spaces.',
+    srvUsernameLocked: 'The username can be changed only once every 30 days.', srvPwMismatch: 'The passwords do not match.',
+    srvPwLength: 'The password must be between 10 and 128 characters.', srvPwFields: 'The password fields are invalid.',
+    srvPwNoSpace: 'The password cannot contain spaces.', srvPwCharset: 'The password must contain at least one letter, one digit and one special character.',
+    srvPwSame: 'The new password must be different from the current one.', srvInviteInvalid: 'The invite code is invalid or has expired.',
+    srvInviteRequired: 'Verify a valid invite code first.', srvInviteUsed: 'This invite code was already used by someone. The code owner gets a new one on the hour.',
+    srvDeviceUsed: 'An account was previously used on this device. For security, a new account cannot be created from the same device.', srvDeviceBound: 'This device is bound to another account. You can only sign in with the device’s current account.',
+    srvEmptyMessage: 'Add a message or an image.', srvMsgNotFound: 'Message not found.',
+    srvMsgGone: 'Message not found, or it was deleted earlier.', srvNotOwner: 'You can only delete your own message.',
+    srvUndoExpired: 'The undo window expired. The message was permanently deleted.', srvDeleteCooldown: 'The undo window for this message has not expired yet.',
+    srvDeletePending: 'A deletion is already in progress for this message.', srvDeleteFailed: 'The message deletion could not be started.',
+    srvDeleteNotPending: 'There is no pending deletion for this message.', srvImageTooLarge: 'The image can be at most 5 MB.',
+    srvImageRequired: 'Choose a profile photo.', srvUploadFailed: 'The image could not be uploaded. Please try again.',
+    srvUploadInvalid: 'Invalid file upload.', srvUploadSingle: 'Only one image can be uploaded at a time.',
+    srvNotImage: 'The file is not a valid image.', srvBadFilename: 'The file name cannot contain an executable extension.',
+    srvBadDimensions: 'The image dimensions are outside the supported limits.', srvBadSettings: 'The theme or language selection is invalid.',
+    srvBadPrivacy: 'The privacy setting is invalid.', srvTooManyAttempts: 'Too many attempts. Please try again later.',
+    srvTooFast: 'Requests are being sent too quickly. Please wait a moment.', srvRateLimit: 'Request limit exceeded. Please wait a short while.',
+    srvCsrf: 'The security token was refreshed; the action is being retried.', srvMethod: 'Request method not allowed for this action.',
+    srvServiceBusy: 'The server is busy right now. It will retry automatically in a few seconds.', srvTooLarge: 'The request body is too large.',
+    srvBadJson: 'Invalid JSON data.', srvBadBody: 'The request body must be an object.',
+    srvMediaNotFound: 'Media not found.', srvMediaForbidden: 'You do not have permission to access this media.',
+    srvFrameNotFound: 'Frame not found.', srvFrameOwned: 'You already own this frame.',
+    srvFrameNotOwned: 'You do not own this frame.', srvGameCooldown: 'Wait a short while before claiming a new reward for this game.',
+    srvQuestClaimed: 'This quest reward has already been claimed.', srvQuestNotDone: 'The quest is not completed yet.',
+    srvQuestNotFound: 'Quest not found.',
+    deletingTitle: 'Deleting', notifNewMessage: 'Someone new posted a message',
+    deleteBtn: 'Delete', imageAttached: 'Image attached to the message', yourImage: 'Your shared image', imageLabel: 'Image',
+    inviteUsedBy: 'Someone signed in with your invite code, so you cannot sign in until a new code is issued. The person who joined with your invite: {who}',
+    unknownUser: 'Unknown', inviteResetToast: 'An administrator reset and changed your invite code.',
+    coinDebtDue: 'Due: {when}.',
+    coinDebtToast: 'JUDGE: You are in debt. The coins in your account were taken and, if your balance was not enough, your account went negative. Pay quickly — you have one month. Quests will earn you more.',
+    errThrottleHttp: 'Server resource protection kicked in. Requests were slowed down automatically. (HTTP {status})',
+    errRefSuffix: ' (Code: {ref})', reasonLabel: 'Reason', notSpecified: 'Not specified',
+    statusLabel: 'Status', userFallback: 'User',
+    profileHeader: 'Profile', sharedImageAlt: 'Shared image',
+    photoSize: 'Profile photos can be at most 5 MB.', usernameNextChange: 'Next change available: {when}',
+    submittedAt: 'Submitted: {when}', reasonPh: 'For example: I want to learn and share in the astrophotography and astronomy rooms.',
+    reasonTooShort: 'Please write your reason for joining in a bit more detail.', applicationSent: 'Your application was sent to the moderator panel.',
+    reapplyAt: 'You can apply again at: {when}.', shopTitle: 'AA Coin Store',
+    shopSubtitle: 'Frames and custom looks', shopEyebrow: 'STORE',
+    shopBalance: 'Your balance: {amount} AA Coin. Prices refresh hourly between 200 and 1000 AA Coin.',
+    equipped: 'Equipped', unequip: 'Remove', equip: 'Equip', buy: 'Buy',
+    settingsSubtitle: 'Account and privacy', inviteVerified: 'Invite code verified.',
+    refreshingNow: 'Refreshing', secureConn: 'Preparing a secure connection',
+    protectionActive: 'Server protection active', applyingUpdate: 'Applying update',
+    sessionKept: 'Your active session is preserved; reconnecting in {seconds} seconds',
+    authEyebrow: 'COMMUNITY MESSAGING', authDescription: 'Verify a valid invite code to join the community.',
+    imageZoomHint: 'You can open the image full screen and zoom in.', messageRestored: 'Message restored.',
+    messageDeleted: 'Message deleted.', approvalReviewing: 'APPLICATION UNDER REVIEW', approvalLastStep: 'LAST STEP',
+    approvalPendingTitle: 'Your application is with the moderators', whyJoinTitle: 'Why do you want to join?',
+    approvalWaiting: 'Your reason was sent to the moderator panel. Your account opens once the review is complete. If there is no reply within 15 days the application closes; in that case you can write again after 5 days.',
+    approvalShortHonest: 'Keep it short and honest. When you press Send, your application goes straight to the moderator panel.',
+    approvalChip: 'A moderator reads your application and decides to accept or reject it.',
+    approvalHint: 'At least 8 characters. This text is visible only in the moderator panel.',
+    inviteWhyCopy: 'For security, invite codes rotate regularly and each code admits exactly one person. This blocks unauthorized access to the platform and protects the community’s privacy.',
+    inviteUsedKicker: 'YOUR INVITE CODE WAS USED',
   },
-  de: {
-    welcome: 'Willkommen bei Asra', welcomeText: 'Wähle einen passenden Raum und sprich mit der Community.',
-    rooms: 'Community-Räume', profile: 'Mein Profil', settings: 'Einstellungen', invite: 'Einladen', admin: 'Adminbereich',
-    logout: 'Abmelden', save: 'Speichern', cancel: 'Abbrechen', close: 'Schließen', copy: 'Kopieren', copied: 'Einladungscode kopiert.',
-    loading: 'Wird geladen', checking: 'Sicherheitsprüfung läuft', connected: 'Verbunden', offline: 'Offline',
-    noMessages: 'Noch keine Nachrichten', noMessagesText: 'Sende die erste Nachricht in diesem Raum.', messagePlaceholder: 'Nachricht schreiben…',
-    send: 'Senden', seenBy: 'gesehen',
-    theme: 'Design', language: 'Sprache', dark: 'Dunkel', light: 'Hell', readReceipts: 'Lesebestätigungen senden',
-    lastSeen: 'Zuletzt gesehen und online', deleteAccount: 'Konto löschen', profileUpdated: 'Profil aktualisiert.',
-    settingsSaved: 'Einstellungen gespeichert.', announcement: 'Ankündigung', users: 'Benutzer', search: 'Benutzer suchen',
-    online: 'Online', hidden: 'Verborgen', why: 'Warum?', back: 'Zurück',
-    updateNudge: 'Deine App-Version ist veraltet: Hintergrundbenachrichtigungen verbrauchen zusätzliche Serverressourcen. Bitte aktualisieren.'
-  },
-  fr: {
-    welcome: 'Bienvenue sur Asra', welcomeText: 'Rejoignez un salon adapté à vos intérêts et échangez avec la communauté.',
-    rooms: 'Salons communautaires', profile: 'Mon profil', settings: 'Paramètres', invite: 'Inviter', admin: 'Administration',
-    logout: 'Déconnexion', save: 'Enregistrer', cancel: 'Annuler', close: 'Fermer', copy: 'Copier', copied: "Code d'invitation copié.",
-    loading: 'Chargement', checking: 'Vérification de la sécurité', connected: 'Connecté', offline: 'Hors ligne',
-    noMessages: 'Aucun message', noMessagesText: 'Envoyez le premier message de ce salon.', messagePlaceholder: 'Écrire un message…',
-    send: 'Envoyer', seenBy: 'vu',
-    theme: 'Thème', language: 'Langue', dark: 'Sombre', light: 'Clair', readReceipts: 'Confirmations de lecture',
-    lastSeen: 'Dernière présence et en ligne', deleteAccount: 'Supprimer mon compte', profileUpdated: 'Profil mis à jour.',
-    settingsSaved: 'Paramètres enregistrés.', announcement: 'Annonce', users: 'Utilisateurs', search: 'Rechercher',
-    online: 'En ligne', hidden: 'Masqué', why: 'Pourquoi ?', back: 'Retour',
-    updateNudge: "Votre version de l'application est ancienne : les notifications en arrière plan consomment des ressources serveur. Veuillez mettre à jour."
-  }
 };
 
 const state = {
@@ -1359,6 +1688,7 @@ const state = {
   pendingImage: null,
   previewUrl: '',
   nextCleanupAt: null,
+  retentionLoading: false,
   retentionHours: 24,
   countdownTimer: null,
   banTimer: null,
@@ -1379,6 +1709,7 @@ const state = {
   undoBuffer: {}, // silinen mesajin 4sn undo penceresi boyunca yerel kopyasi
   sendCooldownActive: false,
   sendCooldownTimer: null,
+  sendCooldownUntil: 0,
   adminTab: 'users',
   hitEconomy: false,
   heartbeatBeat: 0,
@@ -1401,9 +1732,51 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 // işçisi, Notification API) kullanılmaz; kimlik başlığı köprüden alınır.
 const isNativeApp = () => !!(window.AsraNative && typeof window.AsraNative.isNativeApp === 'function' && window.AsraNative.isNativeApp());
 
-function t(key) {
-  const language = state.user?.language || 'tr';
-  return I18N[language]?.[key] || I18N.tr[key] || key;
+/**
+ * Gecerli arayuz dili. Desteklenmeyen bir dil kaydiyla gelen kullanici
+ * (eskiden de/fr secmis olabilir) sessizce 'tr'ye duser.
+ */
+function currentLanguage() {
+  const fromUser = state.user?.language;
+  if (SUPPORTED_LANGUAGES.includes(fromUser)) return fromUser;
+  // Giris ekrani ve cikis sonrasi: kullanici henuz yok, bu yüzden son secim
+  // hatirlanir (tema da ayni deseni kullanir). Boylece Ingilizce secmis bir
+  // kullanici cikis yaptiginda giris ekrani Turkce'ye donmez.
+  try {
+    const remembered = localStorage.getItem('asra_language');
+    if (SUPPORTED_LANGUAGES.includes(remembered)) return remembered;
+  } catch (_) { /* Storage kapali olabilir. */ }
+  return 'tr';
+}
+
+/** Son dil secimini hatirlar; depolama kapaliysa sessizce yutar. */
+function rememberLanguage(code) {
+  if (!SUPPORTED_LANGUAGES.includes(code)) return;
+  try { localStorage.setItem('asra_language', code); } catch (_) { /* yok say */ }
+}
+
+/**
+ * Sunucudan gelen insan dilini secili dile cevirir. Turkce arayuzde metne
+ * HIC dokunmaz (sunucunun kendi cumlesi birebir korunur); baska bir dilde
+ * eslesme varsa cevirisi, yoksa sunucunun cumlesi gosterilir.
+ */
+function localizeServerMessage(text) {
+  const value = String(text ?? '');
+  if (currentLanguage() === 'tr') return value;
+  const key = SERVER_MESSAGE_I18N[value.trim()];
+  return key ? t(key) : value;
+}
+
+function t(key, params) {
+  // Anahtar hicbir yerde yoksa gorunurluk icin anahtarin kendisi doner.
+  const language = currentLanguage();
+  let text = I18N[language]?.[key] ?? I18N.tr[key] ?? key;
+  if (params) {
+    for (const [name, value] of Object.entries(params)) {
+      text = text.split('{' + name + '}').join(String(value));
+    }
+  }
+  return text;
 }
 
 function repairLegacyTurkishText(value) {
@@ -1489,9 +1862,22 @@ function applyTheme(theme) {
   try { localStorage.setItem('asra_theme', safeTheme); } catch (_) { /* Storage kapalı olabilir. */ }
 }
 
+/**
+ * Secili dili UYGULAR. Onceden yalnizca <html lang> ve baglanti etiketini
+ * yaziyordu; statik HTML (giris/kayit, baslik, menu) ve acik ekran Turkce
+ * kaliyordu. Artik data-i18n / -ph / -aria / -title nitelikli her ogeyi ve
+ * baglanti durumunu tazeler. Cagiran taraf (ayarlar kaydi) zaten mevcut
+ * ekrani yeniden cizdigi icin acik gorunum de aninda dile doner.
+ */
 function applyLanguage() {
-  document.documentElement.lang = state.user?.language || 'tr';
-  $('#connection-state span').textContent = state.connected ? t('connected') : t('offline');
+  const language = currentLanguage();
+  document.documentElement.lang = language;
+  document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+  document.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
+  document.querySelectorAll('[data-i18n-title]').forEach((el) => { el.title = t(el.dataset.i18nTitle); });
+  const conn = $('#connection-state span');
+  if (conn) conn.textContent = state.connected ? t('connected') : t('offline');
 }
 
 function setLoading(visible, title = t('loading'), subtitle = t('checking')) {
@@ -1545,7 +1931,7 @@ function setConnection(connected) {
 }
 
 function formatCoin(value) {
-  return new Intl.NumberFormat(state.user?.language || 'tr', { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(Number(value) || 0);
+  return new Intl.NumberFormat(currentLanguage(), { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(Number(value) || 0);
 }
 
 function updateCoinHeader(value = state.user?.aa_coins || 0) {
@@ -1554,7 +1940,7 @@ function updateCoinHeader(value = state.user?.aa_coins || 0) {
 }
 
 function inviteUsedMessage(username) {
-  return `Davet kodunla biri giriş yaptı, yeni davet kodu gelene kadar giriş yapamazsın. Davetin ile giren kişi: ${username || 'Bilinmiyor'}`;
+  return t('inviteUsedBy', { who: username || t('unknownUser') });
 }
 
 function mergeUserFromPayload(user) {
@@ -1578,7 +1964,7 @@ function mergeUserFromPayload(user) {
     let seen = false;
     try { seen = localStorage.getItem(key) === '1'; } catch (_) { seen = false; }
     if (!seen) {
-      toast('Yönetici tarafından davet kodun sıfırlandı ve değiştirildi.', 'warning', 7000);
+      toast(t('inviteResetToast'), 'warning', 7000);
       try { localStorage.setItem(key, '1'); } catch (_) { /* Storage kapalı olabilir. */ }
       window.setTimeout(() => openInvite().catch(displayError), 700);
     }
@@ -1597,8 +1983,8 @@ function mergeUserFromPayload(user) {
     let debtSeen = false;
     try { debtSeen = localStorage.getItem(debtKey) === '1'; } catch (_) { debtSeen = false; }
     if (!debtSeen) {
-      const due = user.coin_debt_due_at ? ` Son ödeme: ${formatDateTime(user.coin_debt_due_at)}.` : '';
-      toast(`YARGIÇ: Borca girdin, hesabındaki coinler alındı ve paran yetmediyse hesabın eksiye düştü. Hızlı bir şekilde öde, 1 ay süren var. Görevler sana daha fazla verecek.${due}`, 'warning', 12000);
+      const due = user.coin_debt_due_at ? ` ${t('coinDebtDue', { when: formatDateTime(user.coin_debt_due_at) })}` : '';
+      toast(`${t('coinDebtToast')}${due}`, 'warning', 12000);
       try { localStorage.setItem(debtKey, '1'); } catch (_) { /* Storage kapalı olabilir. */ }
     }
   }
@@ -1729,20 +2115,26 @@ async function performApiRequest(action, options = {}) {
   const cooldownRemaining = Math.max(0, state.requestCooldownUntil - Date.now());
   if (cooldownRemaining > 0) {
     if (options.background) {
-      throw new ApiRequestError(429, 'REQUEST_COOLDOWN', 'Sunucu koruma bekleme süresi etkin.', {
+      throw new ApiRequestError(429, 'REQUEST_COOLDOWN', t('errThrottleShort'), {
         retry_after: Math.ceil(cooldownRemaining / 1000)
       });
     }
-    await wait(Math.min(cooldownRemaining, 15000));
+    // priority: kullanıcının ELLE bastığı yenileme. Arka plan yoklamalarının
+    // biriktirdiği bekleme kilidi (ağ aksaması/hit limiti sonrası 3-15 sn)
+    // moderatörün tıklamasını sessizce yutuyordu — "düğmeye bastım, bekleyenler
+    // çıkmadı" şikâyetinin istemci tarafındaki kök nedeni budur. Elle istek
+    // bekletilmez; sunucu kendi hız sınırını uygular, sonuç da olduğu gibi
+    // gösterilir (SERVICE_BUSY ise aşağıdaki yeniden deneme devreye girer).
+    if (!options.priority) await wait(Math.min(cooldownRemaining, 15000));
   }
   if (options.background && !ownsBackgroundPollingLease()) {
-    throw new ApiRequestError(429, 'POLLING_FOLLOWER', 'Arka plan güncellemelerini diğer açık sekme yönetiyor.', {
+    throw new ApiRequestError(429, 'POLLING_FOLLOWER', t('errLeader'), {
       retry_after: Math.ceil(POLLING_LEASE_MS / 1000)
     });
   }
   if (options.background && !consumeBackgroundRequestBudget()) {
     state.requestCooldownUntil = Math.max(state.requestCooldownUntil, Date.now() + BACKGROUND_BUDGET_WINDOW_MS);
-    throw new ApiRequestError(429, 'REQUEST_COOLDOWN', 'Dakikalık arka plan istek bütçesi doldu.', {
+    throw new ApiRequestError(429, 'REQUEST_COOLDOWN', t('errBudget'), {
       retry_after: Math.ceil(BACKGROUND_BUDGET_WINDOW_MS / 1000)
     });
   }
@@ -1779,27 +2171,25 @@ async function performApiRequest(action, options = {}) {
       const error = payload?.error || {};
       // Öncelik: HTML ise mutlaka retry, yoksa normal hata
       let fallbackCode = error.code || 'REQUEST_FAILED';
-      let fallbackMessage = error.message || 'İstek tamamlanamadı.';
+      let fallbackMessage = error.message || t('errFailed');
       if (responseText && !payload) {
         if (isHtmlResponse && isHostLimitStatus) {
           fallbackCode = 'HOST_LIMIT_REACHED';
-          fallbackMessage = `Sunucu kaynak koruması etkinleşti. İstekler otomatik olarak yavaşlatıldı. (HTTP ${response.status})`;
+          fallbackMessage = t('errThrottleHttp', { status: response.status });
         } else if (isHtmlResponse) {
           // API JSON yerine HTML döndürdü: dosya eksik/yanlış klasörde (404),
           // PHP çalışmıyor (500) ya da sağlayıcı kendi sayfasını gösteriyor.
           // Durum kodu mesajda gösterilir; kesin teşhis için:
           // /auth.php?action=health
           fallbackCode = 'SERVICE_BUSY';
-          fallbackMessage = `Sunucu JSON yerine HTML sayfası döndürdü (HTTP ${response.status}). `
-            + 'auth.php yüklenmemiş, yanlış klasörde ya da PHP çalışmıyor olabilir. '
-            + 'Tanı: /auth.php?action=health';
+          fallbackMessage = `${t('errHtml', { status: response.status })} ${t('errHtmlHint')} ${t('errDiag')}`;
         } else {
-          fallbackMessage = `Sunucu beklenen JSON cevabı döndürmedi. İşlem: ${action}. HTTP ${response.status}.`;
+          fallbackMessage = t('errNotJson', { action, status: response.status });
         }
       }
       if (isHostLimitStatus && !['RATE_LIMITED', 'SERVICE_BUSY', 'HOST_LIMIT_REACHED'].includes(fallbackCode)) {
         fallbackCode = 'HOST_LIMIT_REACHED';
-        fallbackMessage = 'Sunucu kaynak koruması etkinleşti. İstekler otomatik olarak yavaşlatıldı.';
+        fallbackMessage = t('errThrottle');
       }
       const requestError = new ApiRequestError(response.status || 503, fallbackCode, fallbackMessage, error.details || {});
       if (requestError.details.csrf_token) state.csrf = requestError.details.csrf_token;
@@ -1846,7 +2236,7 @@ async function performApiRequest(action, options = {}) {
     state.serviceErrorCount = Math.min(8, state.serviceErrorCount + 1);
     state.requestCooldownUntil = Math.max(state.requestCooldownUntil, Date.now() + Math.min(MAX_POLL_BACKOFF_MS, 3000 * (2 ** state.serviceErrorCount)));
     if (error?.name === 'AbortError') {
-      throw new ApiRequestError(0, 'REQUEST_TIMEOUT', 'Sunucu zamanında yanıt vermedi. İstekler otomatik olarak yavaşlatıldı.', {
+      throw new ApiRequestError(0, 'REQUEST_TIMEOUT', t('errTimeout'), {
         retry_after: Math.ceil(Math.min(MAX_POLL_BACKOFF_MS, 3000 * (2 ** state.serviceErrorCount)) / 1000)
       });
     }
@@ -1858,7 +2248,7 @@ async function performApiRequest(action, options = {}) {
         return await api(action, { ...options, retriedWhileBusy: true, noDedupe: true });
       } catch (_) {}
     }
-    throw new ApiRequestError(0, 'NETWORK_ERROR', 'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.');
+    throw new ApiRequestError(0, 'NETWORK_ERROR', t('errNetwork'));
   } finally {
     window.clearTimeout(requestTimeout);
     if (options.loading) {
@@ -1885,7 +2275,7 @@ function recoverAuthentication() {
     .then((payload) => {
       if (payload?.csrf_token) state.csrf = payload.csrf_token;
       if (typeof payload?.hit_economy === 'boolean') state.hitEconomy = payload.hit_economy;
-      if (Number(payload?.message_retention_hours) > 0) state.retentionHours = Number(payload.message_retention_hours);
+      applyRetentionHours(payload?.message_retention_hours);
       if (payload?.authenticated) {
         setConnection(true);
         return;
@@ -1916,7 +2306,7 @@ function recoverAuthentication() {
 
 function displayError(error) {
   const code = String(error?.code || 'UNKNOWN_ERROR');
-  const message = error instanceof Error ? error.message : String(error);
+  const message = localizeServerMessage(error instanceof Error ? error.message : String(error));
   const now = Date.now();
   const recoverable = [
     'NETWORK_ERROR', 'REQUEST_TIMEOUT', 'SERVICE_BUSY', 'HOST_LIMIT_REACHED',
@@ -1928,13 +2318,13 @@ function displayError(error) {
     setConnection(false);
     if (now - state.lastRecoveryNoticeAt < 30000) return;
     state.lastRecoveryNoticeAt = now;
-    toast('Bağlantı geçici olarak yavaşladı. Oturumun korunuyor ve sistem otomatik yeniden deniyor.', 'warning', 6000);
+    toast(t('errSlow'), 'warning', 6000);
     return;
   }
 
-  const reference = error?.details?.reference ? ` (Kod: ${error.details.reference})` : '';
+  const reference = error?.details?.reference ? t('errRefSuffix', { ref: error.details.reference }) : '';
   const safeMessage = code === 'INTERNAL_ERROR'
-    ? `İşlem geçici olarak tamamlanamadı. Lütfen kısa süre sonra tekrar dene.${reference}`
+    ? `${t('errInternal')}${reference}`
     : message;
   const key = `${code}|${safeMessage}`;
   if (state.lastErrorToastKey === key && now - state.lastErrorToastAt < 5000) return;
@@ -1950,7 +2340,7 @@ function avatarClass(color) {
 }
 
 function initialOf(username) {
-  return Array.from(String(username || '?').trim())[0]?.toLocaleUpperCase(state.user?.language || 'tr') || '?';
+  return Array.from(String(username || '?').trim())[0]?.toLocaleUpperCase(currentLanguage()) || '?';
 }
 
 function isSafeImagePath(path) {
@@ -1971,7 +2361,7 @@ function avatar(username, color, large = false, imagePath = null, frameId = null
   const safeFrame = typeof frameId === 'string' && /^[a-z0-9_]{3,40}$/.test(frameId) ? frameId : '';
   const element = createElement('span', `${large ? 'profile-avatar' : 'message-avatar'} ${avatarClass(color)}${safeFrame ? ` frame-${safeFrame}` : ''}`);
   const initial = initialOf(username);
-  element.setAttribute('aria-label', `${username || 'Kullanıcı'}`);
+  element.setAttribute('aria-label', username || t('userFallback'));
   if (isSafeImagePath(imagePath)) {
     const image = document.createElement('img');
     image.src = imageSource(imagePath);
@@ -1998,7 +2388,7 @@ function formatDate(value, options = {}) {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat(state.user?.language || 'tr', options).format(date);
+  return new Intl.DateTimeFormat(currentLanguage(), options).format(date);
 }
 
 function formatDateTime(value) {
@@ -2010,7 +2400,11 @@ function formatTime(value) {
 }
 
 function remainingText(target, mode = 'messages') {
-  const seconds = Math.max(0, Math.floor((new Date(target).getTime() - Date.now()) / 1000));
+  // Çözümlenemeyen zaman damgası NaN üretir; Math.max(0, NaN) = NaN olduğu için
+  // ekrana "NaN saat NaN dakika" yazılıyordu. Damga bozuksa süre 0 sayılır.
+  const targetMs = new Date(target).getTime();
+  if (!Number.isFinite(targetMs)) return mode === 'invite' ? '0 dakika 0 saniye' : '0 saat 0 dakika';
+  const seconds = Math.max(0, Math.floor((targetMs - Date.now()) / 1000));
   if (mode === 'invite') {
     const minutes = Math.floor(seconds / 60);
     return `${minutes} dakika ${seconds % 60} saniye`;
@@ -2020,18 +2414,48 @@ function remainingText(target, mode = 'messages') {
   return `${hours} saat ${minutes} dakika`;
 }
 
+// Saklama süresi (saat). Sunucudan gelen değer bozuk/0/negatif olsa bile
+// ekran asla "NaN saat" ya da "0 saat" yazmaz; yedeği sunucu varsayılanıdır.
+const RETENTION_HOURS_FALLBACK = 24;
+function retentionHoursValue() {
+  const hours = Number(state.retentionHours);
+  return Number.isFinite(hours) && hours > 0 ? hours : RETENTION_HOURS_FALLBACK;
+}
+
+// Sunucudan gelen saklama süresini uygular. Bozuk/eksik/0/negatif değer
+// state'i NaN ya da 0 yapamaz (o durumda ekranda "NaN saat" görünüyordu);
+// geçersizse mevcut değer korunur.
+function applyRetentionHours(value) {
+  const hours = Number(value);
+  if (!Number.isFinite(hours) || hours <= 0) return;
+  if (state.retentionHours === hours) return;
+  state.retentionHours = hours;
+  // Süre değiştiyse türetilmiş vade bayatlar: düşürülüp yeniden türetilir.
+  state.nextCleanupAt = null;
+  if (state.route === 'room' && state.currentRoom) {
+    deriveRetentionFrom(msgCacheGet(state.currentRoom.id));
+    updateRetentionCountdown();
+  }
+}
+
 function clearTimers() {
   if (state.pollTimer) window.clearTimeout(state.pollTimer);
   if (state.roomNotificationTimer) window.clearTimeout(state.roomNotificationTimer);
   if (state.countdownTimer) window.clearInterval(state.countdownTimer);
   if (state.banTimer) window.clearInterval(state.banTimer);
   if (state.approvalTimer) window.clearTimeout(state.approvalTimer);
+  if (state.sendCooldownTimer) window.clearInterval(state.sendCooldownTimer);
   state.pollTimer = null;
   state.roomNotificationTimer = null;
   state.countdownTimer = null;
   state.banTimer = null;
   state.approvalTimer = null;
+  state.sendCooldownTimer = null;
   state.polling = false;
+  state.retentionLoading = false;
+  // Gönderim kilidi composer'a değil ZAMAN DAMGASINA bağlıdır: süre dolmadıysa
+  // yeni çizilen composer kilidi devralır (bayrak burada gerçeğe eşitlenir).
+  state.sendCooldownActive = sendCooldownRemainingSeconds() > 0;
   // Oda nabzı TABLOSU bir veri önbelleğidir, zamanlayıcı değildir: burada
   // SİLİNMEZ. Silinirse loadRooms -> renderHome sırası tabloyu daha doğmadan
   // yok eder ve oda içi değişim dedektörü taban çizgisi bulamaz.
@@ -2070,6 +2494,7 @@ function showAuth(inviteVerified = false) {
   $('#app-shell').hidden = true;
   $('#status-screen').hidden = true;
   $('#auth-screen').hidden = false;
+  applyLanguage();
   $('#auth-options').hidden = !inviteVerified;
   $('#invite-form').hidden = inviteVerified;
   applyDeviceAccountRestriction();
@@ -2091,6 +2516,7 @@ function showApp() {
   $('#status-screen').hidden = true;
   $('#app-shell').hidden = false;
   applyTheme(state.user.theme);
+  rememberLanguage(state.user.language);
   applyLanguage();
   // Coin basligi oturum verisinden doluyor; ekonomi/ceklistegih veri
   // YALNIZCA ilgili ekran acildiginda cekilir (renderShop/renderQuestHub)
@@ -2153,7 +2579,7 @@ function maybeShowUpdateNudge() {
   }
 }
 
-function statusScreen(title, message, details, actionText = 'Çık') {
+function statusScreen(title, message, details, actionText = t('exit')) {
   if (state.route === 'ai') clearAsraAiSession();
   clearTimers();
   $('#auth-screen').hidden = true;
@@ -2194,20 +2620,20 @@ function showBannedStatus(ban) {
   const permanent = Boolean(ban.permanent);
   if (permanent) {
     statusScreen(
-      'Kalıcı yasaklandın',
-      'Bu hesaba kalıcı erişim yasağı uygulanmıştır.',
-      [['Neden', ban.reason || 'Belirtilmedi'], ['Durum', 'Kalıcı ban']],
+      t('banPermTitle'),
+      t('banPermCopy'),
+      [[t('reasonLabel'), ban.reason || t('notSpecified')], [t('statusLabel'), t('banPerm')]],
       null
     );
     return;
   }
   statusScreen(
-    'Yasaklandın',
-    'Bu hesaba süreli erişim yasağı uygulanmıştır.',
+    t('banTempTitle'),
+    t('banTempCopy'),
     [
-      ['Neden', ban.reason || 'Belirtilmedi'],
-      ['Yasağın bitmesine kalan süre', banRemainingText(ban.banned_until)],
-      ['Bitiş zamanı', formatDateTime(ban.banned_until)]
+      [t('reasonLabel'), ban.reason || t('notSpecified')],
+      [t('banRemaining'), banRemainingText(ban.banned_until)],
+      [t('banEnds'), formatDateTime(ban.banned_until)]
     ],
     null
   );
@@ -2226,15 +2652,15 @@ function showBannedStatus(ban) {
 
 function showDeletedStatus(details) {
   const reason = String(details && details.reason ? details.reason : '').trim();
-  statusScreen(reason || 'Hesabın silindi', 'Bu hesap ve ilişkili tüm veriler kalıcı olarak silinmiştir.', reason ? [['Neden', reason]] : [], 'Çık');
+  statusScreen(reason || t('deletedTitle'), t('deletedCopy'), reason ? [[t('reasonLabel'), reason]] : [], t('exit'));
 }
 
 function showSessionRevokedStatus() {
   statusScreen(
-    'Şifreniz değiştirildi',
-    'Yetkili tarafından şifreniz değiştirildi, oturum açmalısınız.',
-    [['Güvenlik', 'Eski şifreniz ve önceki açık oturumunuz geçersiz hâle getirildi.']],
-    'Oturum Aç'
+    t('revokedTitle'),
+    t('revokedCopy'),
+    [[t('security'), t('revokedNote')]],
+    t('openSession')
   );
 }
 
@@ -2268,7 +2694,7 @@ function renderRoomNotification(card, room) {
   const dot = createElement('span', 'room-unread-dot');
   const copy = createElement('span', 'room-unread-copy');
   copy.append(
-    createElement('strong', '', 'Yeni bir kişi mesaj yazdı'),
+    createElement('strong', '', t('notifNewMessage')),
     createElement('small', '', 'Yeni bildirimin var.')
   );
   notification.append(dot, copy, createElement('span', 'room-unread-count', unread > 99 ? '99+' : String(unread)));
@@ -2641,7 +3067,7 @@ function renderHome() {
 
   const heading = createElement('header', 'page-heading');
   const copy = createElement('div');
-  copy.append(createElement('p', 'eyebrow', t('rooms').toLocaleUpperCase(state.user.language)), createElement('h1', '', t('welcome')), createElement('p', '', t('welcomeText')));
+  copy.append(createElement('p', 'eyebrow', t('rooms').toLocaleUpperCase(currentLanguage())), createElement('h1', '', t('welcome')), createElement('p', '', t('welcomeText')));
   heading.append(copy);
   view.append(heading, createAsraAiCard());
 
@@ -2688,8 +3114,25 @@ function msgCacheGet(roomId) {
     if (!raw) return null;
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr) || !arr.length) return null;
+    // SAKLAMA SÜRESİ FİLTRESİ: sunucu yalnızca son `retentionHours` saatlik
+    // mesajı döndürür ve vadesi dolanları siler. Yerel önbellek ise günlerce
+    // eskimiş satırları tutabiliyordu; rozeti 0 olan odaya girişte HİÇ istek
+    // atılmadığı için bu HAYALET mesajlar ekranda kalıcı olarak görünüyor ve
+    // geri sayım bayat damgalardan bozuluyordu. Okuma anında elenirler ve
+    // önbellek kalıcı olarak da temizlenir (aynı iş her girişte tekrarlanmaz).
+    const hours = retentionHoursValue();
+    const now = Date.now();
+    const fresh = arr.filter((m) => {
+      const at = new Date(m && m.created_at).getTime();
+      return Number.isFinite(at) && at + hours * 3600000 > now;
+    });
+    if (fresh.length !== arr.length) {
+      if (fresh.length) localStorage.setItem(msgCacheKey(roomId), JSON.stringify(fresh));
+      else localStorage.removeItem(msgCacheKey(roomId));
+    }
+    if (!fresh.length) return null;
     const meId = Number(state.user?.id || 0);
-    return arr.map((m) => Object.assign({}, m, { is_own: Number(m.user_id) === meId }));
+    return fresh.map((m) => Object.assign({}, m, { is_own: Number(m.user_id) === meId }));
   } catch (_) { return null; }
 }
 function msgCacheSet(roomId, messages) {
@@ -2713,9 +3156,10 @@ function enterRoom(room) {
   state.currentRoom = room;
   state.messagesSignature = '';
   state.nextCleanupAt = null;
+  state.retentionLoading = false;
   state.pollBackoff = 0;
   $('#app-view').classList.add('chat-mode');
-  setHeader(room.name, 'Topluluk odası · Yeni mesajlar en geç 1 dakikada görünür', true);
+  setHeader(room.name, t('roomHint'), true);
   renderChatLayout();
   const cached = msgCacheGet(room.id);
   // Odanın okunmamış rozeti (get_rooms tazelemesinden) değişim dedektörüdür.
@@ -2726,13 +3170,31 @@ function enterRoom(room) {
     // SIFIR ISTEK: yerel onbellegten aninda ciz (host'a hic gitmeden).
     state.messagesSignature = cached.map((m) => `${m.id}:${m.view_count}:${m.profile_image_path || ''}:${m.active_profile_frame || ''}`).join('|');
     renderMessages(cached, true);
+    // Sıfır-istek yolunda fetchMessages() HİÇ çalışmayabilir (rozet 0 ise
+    // yakalama isteği de gitmez). Geri sayımın tek türetme/çizim noktası
+    // orası olduğu için sayaç "hesaplanıyor…" yer tutucusunda takılı
+    // kalıyordu. Vade burada, önbellekten ve İSTEK ATMADAN türetilir.
+    deriveRetentionFrom(cached);
     // Rozet 0 ise oda "her şeyi okundu" demektir: yakalama isteği GEREKMEZ,
     // oda girişi gerçekten 0 istek olur. Rozet > 0 ise onbellek eskidir ve
     // TEK yakalama isteği atılır; sonra dedektör normal çalışır.
     if (knownPulse !== 0) fetchMessages(false).catch(() => {});
   } else {
-    fetchMessages(true).catch(displayError); // ilk ziyaret: tek istek, onbellek dolar
+    // İlk ziyaret: önbellek yok, vade sunucudan gelecek. Yükleme bitene
+    // kadar dürüst yer tutucu gösterilir; istek BAŞARISIZ olsa bile bayrak
+    // düşürülür ki sayaç yer tutucuda takılı kalmasın.
+    state.retentionLoading = true;
+    fetchMessages(true)
+      .catch(displayError)
+      .finally(() => {
+        state.retentionLoading = false;
+        updateRetentionCountdown();
+      });
   }
+  // Giriş yolu ne olursa olsun sayaç metni KESİNLEŞTİRİLİR ve yerel
+  // zamanlayıcı kurulur (zamanlayıcı istek üretmez, yalnızca metni tazeler).
+  updateRetentionCountdown();
+  startRetentionCountdownTimer();
   // Dedektör taban çizgisi: şu anki rozet değeri. İlk nabız turunda gerçek
   // değerle karşılaştırılır; fark varsa tek tazeleme gider.
   state.roomUnreadPulse = knownPulse;
@@ -2780,11 +3242,16 @@ function renderChatLayout() {
   noticeIcon.append(svgIcon('shield'));
   const noticeCopy = createElement('div', 'notice-copy');
   noticeCopy.append(
-    createElement('strong', '', 'Güvenli ve konu odaklı sohbet'),
-    createElement('span', 'notice-rule', 'Konu dışına çıkmayın; hakaret, aşağılama ve kişisel saldırı yasaktır.')
+    createElement('strong', '', t('chatSubtitle')),
+    createElement('span', 'notice-rule', t('chatRules'))
   );
   const retention = createElement('div', 'retention-panel');
-  const retentionText = createElement('span', 'countdown', `Duyurular dâhil ${Number(state.retentionHours) || 24} saat sonra temizlenir · hesaplanıyor…`);
+  // Yer tutucu metin yalnızca bu kare için geçerlidir: enterRoom(), çizimden
+  // hemen sonra updateRetentionCountdown() çağırarak gerçek durumu yazar.
+  // (Eskiden sayaç yalnızca fetchMessages() içinde tazeleniyordu; önbellekli +
+  // rozeti 0 olan odaya yeniden girişte hiç istek gitmediği için bu yer
+  // tutucu ekranda KALICI olarak takılı kalıyordu.)
+  const retentionText = createElement('span', 'countdown', `${t('retentionLine', { hours: retentionHoursValue() })} · ${t('retentionCalculating')}`);
   retentionText.prepend(svgIcon('clock'));
   const why = button(t('why'), 'retention-help');
   why.addEventListener('click', openMessageRetentionReason);
@@ -2804,9 +3271,9 @@ function renderChatLayout() {
   preview.id = 'image-preview';
   preview.hidden = true;
   const previewImage = document.createElement('img');
-  previewImage.alt = 'Seçilen resim önizlemesi';
+  previewImage.alt = t('imagePreviewAria');
   const previewName = createElement('span');
-  const removePreview = button('Kaldır', 'ghost-button');
+  const removePreview = button(t('remove'), 'ghost-button');
   removePreview.addEventListener('click', releasePendingImage);
   preview.append(previewImage, previewName, removePreview);
 
@@ -2837,6 +3304,11 @@ function renderChatLayout() {
   send.type = 'submit';
   send.append(svgIcon('send'));
   send.setAttribute('aria-label', t('send'));
+  // Oda değiştirildiğinde composer yeniden çizilir: sürmekte olan gönderim
+  // kilidi YENİ butona taşınır, yoksa buton serbest görünürken gönderimler
+  // sessizce yutulur (kullanıcı hiçbir geri bildirim alamaz).
+  applySendCooldownToButton(send);
+  ensureSendCooldownTicker();
   main.append(imageButton, textarea, send);
   composer.append(preview, main);
   composer.addEventListener('submit', sendCurrentMessage);
@@ -2849,29 +3321,75 @@ function renderChatLayout() {
 // Sunucu geri sayımı yalnızca odaya İLK girişte (meta=1) ve odada mesaj
 // varsa gönderir. Boş odaya girip mesaj yazınca geri sayım hiç başlamıyordu;
 // bu yüzden elimizdeki mesaj listesinden EK İSTEK ATILMADAN türetilir.
-function deriveRetentionFrom(messages) {
-  if (state.nextCleanupAt || !Array.isArray(messages) || !messages.length) return;
+//
+// Vadesi dolmuş damgalar elenir: yerel önbellek (localStorage) saklama
+// süresinden daha eski mesajları tutmaya devam edebildiği için bunlar
+// sayaca alınırsa vade GEÇMİŞTE kalır ve metin kalıcı olarak kilitlenir.
+function retentionDeadlineFrom(messages) {
+  if (!Array.isArray(messages) || !messages.length) return null;
+  const hours = retentionHoursValue();
+  const now = Date.now();
   let oldest = Infinity;
   messages.forEach((message) => {
-    const at = new Date(message.created_at).getTime();
-    if (Number.isFinite(at) && at < oldest) oldest = at;
+    const at = new Date(message && message.created_at).getTime();
+    if (!Number.isFinite(at)) return;
+    if (at + hours * 3600000 <= now) return; // vadesi dolmuş: sayaç üretmez
+    if (at < oldest) oldest = at;
   });
-  if (oldest === Infinity) return;
-  state.nextCleanupAt = new Date(oldest + state.retentionHours * 3600000).toISOString();
+  return Number.isFinite(oldest) && oldest !== Infinity
+    ? new Date(oldest + hours * 3600000).toISOString()
+    : null;
+}
+
+function deriveRetentionFrom(messages) {
+  if (state.nextCleanupAt) return;
+  const deadline = retentionDeadlineFrom(messages);
+  if (deadline) state.nextCleanupAt = deadline;
+}
+
+// Geri sayım zamanlayıcısı YALNIZCA ekrandaki metni tazeler; hiçbir ağ
+// isteği üretmez, dolayısıyla hit bütçesine dokunmaz. Oda dışında
+// clearTimers() tarafından durdurulur.
+const RETENTION_TICK_MS = 30000;
+function startRetentionCountdownTimer() {
+  if (state.countdownTimer || state.route !== 'room') return;
+  state.countdownTimer = window.setInterval(updateRetentionCountdown, RETENTION_TICK_MS);
 }
 
 function updateRetentionCountdown() {
   const element = $('.room-notice .countdown');
   if (!element) return;
-  const hours = Number(state.retentionHours) || 24;
-  let tail;
-  if (!state.nextCleanupAt) {
-    tail = 'oda boş · ilk mesajdan sonra başlar';
-  } else {
-    const seconds = Math.floor((new Date(state.nextCleanupAt).getTime() - Date.now()) / 1000);
-    tail = seconds > 0 ? remainingText(state.nextCleanupAt) : 'temizleniyor…';
+  const hours = retentionHoursValue();
+
+  // Süresi biten vade eskiden "temizleniyor…"a düşüp bir daha asla
+  // türetilmediği için ORADA KALICI KİLİTLENİYORDU. Artık bayat vade
+  // düşülür ve elde kalan mesajlardan yeniden türetilir: odada geçerli
+  // mesaj varsa sayaç doğru yerden devam eder, yoksa dürüst durum yazılır.
+  if (state.nextCleanupAt) {
+    const deadlineMs = new Date(state.nextCleanupAt).getTime();
+    if (!Number.isFinite(deadlineMs) || deadlineMs <= Date.now()) {
+      state.nextCleanupAt = null;
+      deriveRetentionFrom(msgCacheGet(state.currentRoom && state.currentRoom.id));
+    }
   }
-  element.replaceChildren(svgIcon('clock'), document.createTextNode(`Duyurular dâhil ${hours} saat sonra temizlenir · ${tail}`));
+
+  // İki dürüst durum, hiçbiri yapışkan değildir:
+  //   vade belli          -> canlı sayaç
+  //   ilk yükleme sürüyor -> "hesaplanıyor…" (istek bitsin ya da KALSIN, mutlaka değişir)
+  //   yükleme bitti, odada geçerli mesaj yok -> "oda boş"
+  // Yükleme bitmeden "oda boş" yazmak, dolu bir oda için yanlış bilgi olurdu.
+  // Vadesi dolmuş satırlar msgCacheGet() içinde elendiği için burada ayrıca
+  // bir "temizleniyor…" ara durumu gerekmez: süresi dolan mesaj sunucuda da
+  // istemcide de aynı anda görünmez olur.
+  let tail;
+  if (state.nextCleanupAt) {
+    tail = remainingText(state.nextCleanupAt);
+  } else if (state.retentionLoading) {
+    tail = t('retentionCalculating');
+  } else {
+    tail = t('roomEmptyFirst');
+  }
+  element.replaceChildren(svgIcon('clock'), document.createTextNode(`${t('retentionLine', { hours })} · ${tail}`));
 }
 
 async function refreshSessionState() {
@@ -2879,7 +3397,7 @@ async function refreshSessionState() {
   if (!payload) return;
   if (payload.csrf_token) state.csrf = payload.csrf_token;
   if (typeof payload.hit_economy === 'boolean') state.hitEconomy = payload.hit_economy;
-  if (Number(payload.message_retention_hours) > 0) state.retentionHours = Number(payload.message_retention_hours);
+  applyRetentionHours(payload.message_retention_hours);
   if (payload.user) mergeUserFromPayload(payload.user);
 }
 
@@ -2892,7 +3410,7 @@ function renderLocalRow(msg) {
     const row = document.createElement('article');
     const sys = document.createElement('div');
     sys.className = 'system-message' + (/^DUYURU:/i.test(msg.content) ? ' announcement-message' : ' welcome-message');
-    sys.append(document.createTextNode(msg.content.replace(/^DUYURU:\s*/i, '').trim() || 'Sistem mesajı'));
+    sys.append(document.createTextNode(msg.content.replace(/^DUYURU:\s*/i, '').trim() || t('systemMessage')));
     row.append(sys);
     return row;
   }
@@ -2913,10 +3431,12 @@ async function fetchMessages(initial = false) {
     if (!state.currentRoom || state.currentRoom.id !== roomId) return false;
     if (payload.next_cleanup_at) state.nextCleanupAt = payload.next_cleanup_at;
     const messages = payload.messages;
+    msgCacheSet(roomId, messages); // onbellegi resmi durumla sinirla
+    // Önbellek ÖNCE yazılır: sayaç, "odada bilinen mesaj var mı" kararını
+    // bu önbellekten okuduğu için eski değerle yanlış metin göstermesin.
     deriveRetentionFrom(messages);
     updateRetentionCountdown();
-    if (!state.countdownTimer) state.countdownTimer = window.setInterval(updateRetentionCountdown, 30000);
-    msgCacheSet(roomId, messages); // onbellegi resmi durumla sinirla
+    startRetentionCountdownTimer();
     const signature = messages.map((message) => `${message.id}:${message.view_count}:${message.profile_image_path || ''}:${message.active_profile_frame || ''}`).join('|');
     const changed = initial || signature !== state.messagesSignature;
     if (changed) {
@@ -2944,13 +3464,8 @@ function messageDayLabel(value) {
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
   const key = messageDateKey(value);
-  const language = state.user?.language || 'tr';
-  const labels = {
-    tr: ['Bugün', 'Dün'], en: ['Today', 'Yesterday'],
-    de: ['Heute', 'Gestern'], fr: ["Aujourd’hui", 'Hier']
-  };
-  if (key === messageDateKey(today)) return labels[language]?.[0] || labels.tr[0];
-  if (key === messageDateKey(yesterday)) return labels[language]?.[1] || labels.tr[1];
+  if (key === messageDateKey(today)) return t('dayToday');
+  if (key === messageDateKey(yesterday)) return t('dayYesterday');
   return formatDate(date.toISOString(), { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
@@ -2967,7 +3482,7 @@ function messagesBelongTogether(previous, current) {
 // kaybolmasına yol açmıştı; kök düzeltme tek paylaşılan üreticidir.)
 function buildMessageRow(message, grouped = false) {
   const displayContent = repairLegacyTurkishText(message.content);
-  const displayUsername = repairLegacyTurkishText(message.username) || 'Kullanıcı';
+  const displayUsername = repairLegacyTurkishText(message.username) || t('userFallback');
   const row = createElement('article', `message-row${message.is_own ? ' own' : ''}${grouped ? ' grouped' : ''}`);
   row.dataset.msgId = String(message.id);
   const avatarButton = avatar(displayUsername, message.avatar_color, false, message.profile_image_path, message.active_profile_frame);
@@ -2986,12 +3501,12 @@ function buildMessageRow(message, grouped = false) {
   if (message.is_own) {
     bubble.tabIndex = 0;
     bubble.setAttribute('role', 'button');
-    bubble.setAttribute('aria-label', 'Mesajı silme bölümünü aç');
+    bubble.setAttribute('aria-label', t('deleteMessageAria'));
     const messageActions = createElement('button', 'message-actions-button');
     messageActions.type = 'button';
     messageActions.append(svgIcon('more'));
-    messageActions.setAttribute('aria-label', 'Mesajı sil');
-    messageActions.title = 'Mesajı sil';
+    messageActions.setAttribute('aria-label', t('deleteMessage'));
+    messageActions.title = t('deleteMessage');
     messageActions.addEventListener('click', (event) => {
       event.stopPropagation();
       openMessageOptions(message);
@@ -3006,13 +3521,13 @@ function buildMessageRow(message, grouped = false) {
     const image = document.createElement('img');
     image.className = 'message-image';
     image.src = imageSource(message.image_path);
-    image.alt = displayContent ? 'Mesaja eklenen resim' : 'Paylaşılan resim';
+    image.alt = displayContent ? t('imageAttached') : t('sharedImage');
     image.loading = 'eager';
     image.decoding = 'async';
     image.draggable = false;
     image.addEventListener('dragstart', (event) => event.preventDefault());
     image.addEventListener('error', () => {
-      const fallback = createElement('small', 'field-note', 'Görsel şu anda yüklenemedi.');
+      const fallback = createElement('small', 'field-note', t('imageFail'));
       image.replaceWith(fallback);
     });
     image.addEventListener('click', (event) => {
@@ -3036,7 +3551,7 @@ function buildMessageRow(message, grouped = false) {
     const row = viewers.closest('.message-row');
     const mid = Number(row?.dataset.msgId) || Number(state.localIdMap?.[message.id]) || Number(message.id) || 0;
     if (!Number.isFinite(mid) || mid <= 0) {
-      toast('Mesaj sunucuya iletiliyor, görenler birazdan açılacak.', 'info');
+      toast(t('sendingNote'), 'info');
       return;
     }
     openViewers(mid).catch(displayError);
@@ -3100,7 +3615,7 @@ function renderMessages(messages, forceBottom = false) {
         announcementActions.addEventListener('click', () => openAnnouncementAdminMenu(message));
         systemMessage.append(announcementActions);
       } else {
-        systemMessage.append(svgIcon('spark'), document.createTextNode(displayContent || 'Sistem mesajı'));
+        systemMessage.append(svgIcon('spark'), document.createTextNode(displayContent || t('systemMessage')));
       }
       list.append(systemMessage);
       previousMessage = null;
@@ -3130,8 +3645,8 @@ async function sendCurrentMessage(event) {
   const form = event.currentTarget;
   const submit = $('button[type="submit"]', form);
   // 5 sn cooldown: bir gönderimden sonra buton 5 sn kilitli (geri sayımlı),
-  // süre bitmeden yazılsa bile gönderilemez.
-  if (state.sendCooldownActive) return;
+  // süre bitmeden yazılsa bile gönderilemez. Kilit zaman damgasından okunur.
+  if (sendCooldownRemainingSeconds() > 0) return;
   const localId = 'local-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
   const sentMsg = {
     id: localId,
@@ -3159,8 +3674,10 @@ async function sendCurrentMessage(event) {
   // Boş odaya yazılan ilk mesaj: sunucu meta=1 olmadan geri sayım
   // göndermediği için sayaç buradan başlatılır (ek istek yok).
   if (!state.nextCleanupAt) {
-    state.nextCleanupAt = new Date(Date.now() + (Number(state.retentionHours) || 24) * 3600000).toISOString();
+    state.retentionLoading = false;
+    state.nextCleanupAt = new Date(Date.now() + retentionHoursValue() * 3600000).toISOString();
     updateRetentionCountdown();
+    startRetentionCountdownTimer();
   }
   textarea.value = '';
   textarea.classList.remove('expanded');
@@ -3175,26 +3692,64 @@ async function sendCurrentMessage(event) {
 
 // 5 sn gönderim cooldown'u: buton üzerinde 5..4..3..2..1 geri sayımı,
 // süre bitmeden gönderim kilitli, süre bitince tekrar gönderilebilir.
-function startSendCooldown(submit) {
-  if (!submit) return;
-  state.sendCooldownActive = true;
-  submit.disabled = true;
-  const original = submit.innerHTML;
-  let remaining = SEND_COOLDOWN_MS / 1000;
-  submit.textContent = String(remaining);
-  const tick = () => {
-    remaining -= 1;
-    if (remaining <= 0) {
+// Kalan cooldown saniyesi TEK kaynaktan (zaman damgası) okunur.
+function sendCooldownRemainingSeconds() {
+  const remaining = Math.ceil((Number(state.sendCooldownUntil) - Date.now()) / 1000);
+  return Number.isFinite(remaining) && remaining > 0 ? remaining : 0;
+}
+
+/**
+ * Gönderim kilidini VERİLEN butona uygular; süre bittiyse kilidi söker.
+ *
+ * Kilit eskiden gönderim anındaki buton düğümüne kapanışla bağlıydı ve
+ * clearTimers() bu zamanlayıcıyı tanımıyordu. Kullanıcı 5 sn dolmadan başka
+ * odaya geçince eski sayaç kopmuş bir düğüm üzerinde saymayı sürdürüyor, yeni
+ * odanın butonu SERBEST görünürken gönderimler sessizce yutuluyordu. Artık
+ * kilit bir zaman damgasıdır ve her composer çiziminde yeni butona yeniden
+ * uygulanır; guard da bayraktan değil damgadan okur (bayat bayrak gönderimi
+ * ne yanlışlıkla kilitler ne yanlışlıkla açar).
+ */
+function applySendCooldownToButton(submit) {
+  const remaining = sendCooldownRemainingSeconds();
+  if (!remaining) {
+    if (state.sendCooldownTimer) {
       window.clearInterval(state.sendCooldownTimer);
       state.sendCooldownTimer = null;
-      state.sendCooldownActive = false;
-      submit.disabled = false;
-      submit.innerHTML = original;
-      return;
     }
-    submit.textContent = String(remaining);
-  };
-  state.sendCooldownTimer = window.setInterval(tick, 1000);
+    state.sendCooldownActive = false;
+    if (submit) {
+      submit.disabled = false;
+      submit.replaceChildren(svgIcon('send'));
+    }
+    return;
+  }
+  state.sendCooldownActive = true;
+  if (!submit) return;
+  submit.disabled = true;
+  submit.textContent = String(remaining);
+}
+
+// Cooldown sürerken her saniye CANLI butonu bulup tazeler; kilit composer
+// yeniden çizilse bile kopmaz.
+function ensureSendCooldownTicker() {
+  if (!sendCooldownRemainingSeconds()) {
+    applySendCooldownToButton(null);
+    return;
+  }
+  if (state.sendCooldownTimer) return;
+  state.sendCooldownTimer = window.setInterval(() => {
+    applySendCooldownToButton($('#composer-form button[type="submit"]'));
+  }, 1000);
+}
+
+function startSendCooldown(submit) {
+  state.sendCooldownUntil = Date.now() + SEND_COOLDOWN_MS;
+  if (state.sendCooldownTimer) {
+    window.clearInterval(state.sendCooldownTimer);
+    state.sendCooldownTimer = null;
+  }
+  applySendCooldownToButton(submit);
+  ensureSendCooldownTicker();
 }
 
 // Gönderim outbox'ı: yerel çizilen mesajlar burada bekletilir, arka planda
@@ -3242,7 +3797,7 @@ function syncSendOutbox() {
           // Teslim başarısız: başa koy, geri çekilerek dene.
           state.sendOutbox.unshift(entry);
           persistSendOutbox();
-          toast('Mesaj gönderilemedi, yeniden deneniyor…', 'warning');
+          toast(t('sendRetry'), 'warning');
           if (state.sendOutbox.length) window.setTimeout(syncSendOutbox, 4000);
           break;
         }
@@ -3294,7 +3849,7 @@ function reconcileLocalMessage(localId, roomId, updates, msg) {
           const image = document.createElement('img');
           image.className = 'message-image';
           image.src = imageSource(imagePath);
-          image.alt = (row.querySelector('.message-text') || {}).textContent || 'Paylaşılan resim';
+          image.alt = (row.querySelector('.message-text') || {}).textContent || t('sharedImage');
           image.loading = 'lazy';
           image.decoding = 'async';
           image.draggable = false;
@@ -3312,7 +3867,7 @@ function handleImageSelection(event) {
   if (!file) return;
   const allowed = ['image/jpeg', 'image/png', 'image/webp'];
   if (!allowed.includes(file.type)) {
-    toast('Yalnızca JPG, PNG ve WEBP resimleri kabul edilir.', 'error');
+    toast(t('photoType'), 'error');
     return;
   }
   if (file.size > MAX_IMAGE_BYTES) {
@@ -3404,25 +3959,25 @@ function openAnnouncementDeleteMenu(message) {
 function openMessageRetentionReason() {
   const content = createElement('div');
   content.append(
-    createElement('p', 'modal-copy', `Veritabanı kapasitesinin verimli kullanılması ve sistemin hızlı, kararlı ve performanslı çalışmasının sürdürülmesi için duyurular dâhil bütün odalardaki mesajlar gönderildikten ${Number(state.retentionHours) || 24} saat sonra düzenli olarak temizlenir.`)
+    createElement('p', 'modal-copy', `Veritabanı kapasitesinin verimli kullanılması ve sistemin hızlı, kararlı ve performanslı çalışmasının sürdürülmesi için duyurular dâhil bütün odalardaki mesajlar gönderildikten ${retentionHoursValue()} saat sonra düzenli olarak temizlenir.`)
   );
   const actions = createElement('div', 'modal-actions');
   const close = button(t('close'), 'primary-button');
   close.addEventListener('click', closeModal);
   actions.append(close);
   content.append(actions);
-  openModal('Mesaj saklama politikası', content, 'GİZLİLİK VE PERFORMANS');
+  openModal(t('retentionPolicy'), content, t('retentionPolicyKicker'));
 }
 
 /**
  * Tam ekran görsel görüntüleyici: tekerlek, çift dokunuş ve iki parmakla
  * yakınlaştırma, sürükleyerek kaydırma, X veya ESC ile çıkış.
  */
-function openImageZoom(source, description = 'Paylaşılan görsel') {
+function openImageZoom(source, description = t('sharedImageAlt')) {
   const overlay = createElement('div', 'image-zoom-overlay');
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-label', 'Görsel görüntüleyici');
+  overlay.setAttribute('aria-label', t('imageViewer'));
   const stage = createElement('div', 'image-zoom-stage');
   const image = document.createElement('img');
   image.className = 'image-zoom-image';
@@ -3461,17 +4016,17 @@ function openImageZoom(source, description = 'Paylaşılan görsel') {
 
   const closeButton = createElement('button', 'image-zoom-close', '✕');
   closeButton.type = 'button';
-  closeButton.setAttribute('aria-label', 'Görseli kapat');
+  closeButton.setAttribute('aria-label', t('closeImage'));
   closeButton.addEventListener('click', close);
 
   const controls = createElement('div', 'image-zoom-controls');
   const zoomOut = button('−', '');
-  zoomOut.setAttribute('aria-label', 'Uzaklaştır');
+  zoomOut.setAttribute('aria-label', t('zoomOut'));
   zoomOut.addEventListener('click', () => setScale(scale - 0.4));
-  const reset = button('Sığdır', '');
+  const reset = button(t('zoomFit'), '');
   reset.addEventListener('click', () => setScale(1));
   const zoomIn = button('+', '');
-  zoomIn.setAttribute('aria-label', 'Yakınlaştır');
+  zoomIn.setAttribute('aria-label', t('zoomIn'));
   zoomIn.addEventListener('click', () => setScale(scale + 0.4));
   controls.append(zoomOut, reset, zoomIn);
 
@@ -3523,10 +4078,10 @@ function openImageZoom(source, description = 'Paylaşılan görsel') {
   stage.addEventListener('pointerleave', endPointer);
   overlay.addEventListener('click', (event) => { if (event.target === overlay || event.target === stage) close(); });
   image.addEventListener('error', () => {
-    stage.replaceChildren(createElement('p', 'image-zoom-hint', 'Görsel şu anda yüklenemedi.'));
+    stage.replaceChildren(createElement('p', 'image-zoom-hint', t('imageFail')));
   });
 
-  overlay.append(stage, closeButton, controls, createElement('p', 'image-zoom-hint', 'Yakınlaştırmak için tekerlek, çift dokunuş veya düğmeleri kullan.'));
+  overlay.append(stage, closeButton, controls, createElement('p', 'image-zoom-hint', t('zoomHint')));
   document.body.append(overlay);
   document.body.classList.add('modal-open');
   document.addEventListener('keydown', onKeyDown);
@@ -3537,50 +4092,50 @@ function openImageZoom(source, description = 'Paylaşılan görsel') {
 
 function openImageActions(message) {
   const content = createElement('div');
-  content.append(createElement('p', 'modal-copy', 'Görseli tam ekranda açıp yakınlaştırabilirsin.'));
+  content.append(createElement('p', 'modal-copy', t('imageZoomHint')));
   const actions = createElement('div', 'modal-actions');
   const cancel = button(t('close'), 'ghost-button');
   cancel.addEventListener('click', closeModal);
-  const zoom = button('Yakınlaştır', 'primary-button');
+  const zoom = button(t('zoomIn'), 'primary-button');
   zoom.addEventListener('click', () => {
     closeModal();
-    openImageZoom(imageSource(message.image_path), 'Paylaşılan görsel');
+    openImageZoom(imageSource(message.image_path), t('sharedImageAlt'));
   });
   actions.append(cancel, zoom);
   content.append(actions);
-  openModal('Görsel', content, 'GÖRSEL ÖNİZLEME');
+  openModal(t('imageLabel'), content, t('imagePreviewKicker'));
 }
 
 function openMessageOptions(message) {
   if (!message.is_own) return;
   const content = createElement('div');
   content.append(
-    createElement('p', 'modal-copy', 'Mesajınızı kalıcı olarak silmek için “Sil” düğmesine basın. İşlem başlatıldıktan sonra 4 saniye boyunca geri alınabilir; süre dolduğunda mesaj veritabanından ve tüm kullanıcıların ekranından tamamen kaldırılır.')
+    createElement('p', 'modal-copy', t('deleteCopyConfirm'))
   );
   const policy = createElement('div', 'delete-policy-note');
-  policy.append(svgIcon('clock'), createElement('span', '', 'Mesajınızı silmek istiyorsanız “Sil” düğmesine basın.'));
+  policy.append(svgIcon('clock'), createElement('span', '', t('deleteCopyAsk')));
   const hasImage = isSafeImagePath(message.image_path);
   const actions = createElement('div', `modal-actions${hasImage ? '' : ' single-delete-action'}`);
-  const remove = button('Sil', 'danger-button', 'button');
+  const remove = button(t('deleteBtn'), 'danger-button', 'button');
   remove.addEventListener('click', () => deleteMessage(message.id));
   if (hasImage) {
-    const zoom = button('Yakınlaştır', 'secondary-button');
+    const zoom = button(t('zoomIn'), 'secondary-button');
     zoom.addEventListener('click', () => {
       closeModal();
-      openImageZoom(imageSource(message.image_path), 'Paylaştığın görsel');
+      openImageZoom(imageSource(message.image_path), t('yourImage'));
     });
     actions.append(zoom);
   }
   actions.append(remove);
   content.append(policy, actions);
-  openModal('Mesajı sil', content, 'KALICI SİLME İŞLEMİ');
+  openModal(t('deleteMessage'), content, t('deleteKicker'));
 }
 
 function showUndoDeleteToast(payload) {
   const item = createElement('div', 'toast warning undo-delete-toast');
   item.setAttribute('role', 'status');
   const copy = createElement('div', 'undo-delete-copy');
-  copy.append(createElement('strong', '', 'Siliniyor'), createElement('span', '', 'Mesaj tüm kullanıcılardan kaldırılıyor.'));
+  copy.append(createElement('strong', '', t('deletingTitle')), createElement('span', '', t('deleting')));
   const undo = button('Geri al', 'undo-delete-button');
   const progress = createElement('span', 'undo-delete-progress');
   item.append(copy, undo, progress);
@@ -3613,7 +4168,7 @@ function showUndoDeleteToast(payload) {
       item.remove();
       // Yerel geri cizim (0 ek istek): onbellekten dogru sirayla yeniden cizilir
       restoreDeletedLocally(payload.message_id);
-      toast('Mesaj geri getirildi.');
+      toast(t('messageRestored'));
     } catch (error) {
       item.remove();
       displayError(error);
@@ -3632,7 +4187,7 @@ async function deleteMessage(messageId) {
       state.sendOutbox.splice(outboxIdx, 1);
       persistSendOutbox();
       removeLocalMessageRows(idStr);
-      toast('Mesaj silindi.', 'warning');
+      toast(t('messageDeleted'), 'warning');
       return;
     }
     // 2) Teslim edilmişse: sunucu id'si üzerinden normal akış (undo dahil)
@@ -3640,7 +4195,7 @@ async function deleteMessage(messageId) {
     if (serverId) { deleteMessage(serverId); return; }
     // 3) Ne outbox'ta ne haritada (teslim edildiyse haritada olmalı; emniyet)
     removeLocalMessageRows(idStr);
-    toast('Mesaj silindi.', 'warning');
+    toast(t('messageDeleted'), 'warning');
     return;
   }
   try {
@@ -3761,7 +4316,7 @@ async function openViewers(messageId) {
   const payload = await api('get_message_views', { query: { message_id: messageId }, loading: true });
   const content = createElement('div');
   if (!payload.viewers.length) {
-    content.append(createElement('p', 'modal-copy', 'Bu mesaj için görünür bir okundu bilgisi bulunmuyor.'));
+    content.append(createElement('p', 'modal-copy', t('viewersEmpty')));
   } else {
     const list = createElement('div', 'viewer-list');
     payload.viewers.forEach((viewer) => {
@@ -3774,7 +4329,7 @@ async function openViewers(messageId) {
     });
     content.append(list);
   }
-  openModal('Görenler', content, 'OKUNDU BİLGİSİ');
+  openModal(t('viewers'), content, t('viewersKicker'));
 }
 
 async function renderProfile(userId = state.user.id) {
@@ -3786,7 +4341,7 @@ async function renderProfile(userId = state.user.id) {
   clearTimers();
   releasePendingImage();
   state.route = 'profile';
-  setHeader(profile.is_own ? t('profile') : profile.username, 'Profil', true);
+  setHeader(profile.is_own ? t('profile') : profile.username, t('profileHeader'), true);
   const view = $('#app-view');
   view.classList.remove('chat-mode');
   view.replaceChildren();
@@ -3794,11 +4349,11 @@ async function renderProfile(userId = state.user.id) {
   const panel = createElement('section', 'panel');
   const hero = createElement('div', 'profile-hero');
   const heroCopy = createElement('div');
-  heroCopy.append(createElement('p', 'eyebrow', 'ASRA ÜYESİ'), createElement('h1', '', profile.username));
+  heroCopy.append(createElement('p', 'eyebrow', t('memberKicker')), createElement('h1', '', profile.username));
   const presence = createElement('p', `presence${profile.online ? ' online' : ''}`);
   presence.append(createElement('i'));
   let presenceText = t('hidden');
-  if (!profile.presence_hidden) presenceText = profile.online ? t('online') : `Son görülme: ${formatDateTime(profile.last_seen)}`;
+  if (!profile.presence_hidden) presenceText = profile.online ? t('online') : t('lastSeenAt', { when: formatDateTime(profile.last_seen) });
   presence.append(document.createTextNode(presenceText));
   heroCopy.append(presence);
   const profileVisual = profile.is_own
@@ -3808,7 +4363,7 @@ async function renderProfile(userId = state.user.id) {
   panel.append(hero);
   if (profile.about) panel.append(createElement('p', 'panel-description', profile.about));
   const facts = createElement('div', 'profile-facts');
-  facts.append(profileFact('Katılım', formatDate(profile.created_at, { dateStyle: 'medium' })), profileFact('Doğum günü', profile.birthday ? formatDate(`${profile.birthday}T00:00:00Z`, { dateStyle: 'long', timeZone: 'UTC' }) : 'Belirtilmedi'), profileFact('Durum', presenceText));
+  facts.append(profileFact(t('joined'), formatDate(profile.created_at, { dateStyle: 'medium' })), profileFact(t('birthday'), profile.birthday ? formatDate(`${profile.birthday}T00:00:00Z`, { dateStyle: 'long', timeZone: 'UTC' }) : 'Belirtilmedi'), profileFact('Durum', presenceText));
   panel.append(facts);
   view.append(panel);
 
@@ -3820,8 +4375,8 @@ function createProfilePhotoControl(profile) {
   const wrapper = createElement('div', 'profile-photo-control');
   const changeButton = createElement('button', 'profile-photo-button');
   changeButton.type = 'button';
-  changeButton.title = 'Profil resmi ekle veya değiştir';
-  changeButton.setAttribute('aria-label', 'Profil resmi ekle veya değiştir');
+  changeButton.title = t('photoAdd');
+  changeButton.setAttribute('aria-label', t('photoAdd'));
   changeButton.append(avatar(profile.username, profile.avatar_color, true, profile.profile_image_path, profile.active_profile_frame));
   const overlay = createElement('span', 'profile-photo-overlay');
   overlay.append(svgIcon('image'));
@@ -3836,11 +4391,11 @@ function createProfilePhotoControl(profile) {
     input.value = '';
     if (!file) return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      toast('Yalnızca JPG, PNG ve WEBP resimleri kabul edilir.', 'error');
+      toast(t('photoType'), 'error');
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      toast('Profil resmi en fazla 5 MB olabilir.', 'error');
+      toast(t('photoSize'), 'error');
       return;
     }
     const data = new FormData();
@@ -3848,18 +4403,18 @@ function createProfilePhotoControl(profile) {
     try {
       const result = await api('update_profile_photo', { method: 'POST', formData: data, loading: true });
       state.user.profile_image_path = result.profile_image_path;
-      toast('Profil resmi güncellendi.');
+      toast(t('photoUpdated'));
       await renderProfile(state.user.id);
     } catch (error) { displayError(error); }
   });
   wrapper.append(changeButton, input);
   if (isSafeImagePath(profile.profile_image_path)) {
-    const remove = button('Resmi kaldır', 'profile-photo-remove');
+    const remove = button(t('photoRemove'), 'profile-photo-remove');
     remove.addEventListener('click', async () => {
       try {
         await api('delete_profile_photo', { method: 'POST', data: {}, loading: true });
         state.user.profile_image_path = null;
-        toast('Profil resmi kaldırıldı.');
+        toast(t('photoRemoved'));
         await renderProfile(state.user.id);
       } catch (error) { displayError(error); }
     });
@@ -3876,20 +4431,20 @@ function profileFact(label, value) {
 
 function profileEditPanel(profile) {
   const panel = createElement('section', 'panel');
-  panel.append(createElement('h2', '', 'Profili düzenle'), createElement('p', 'panel-description', 'Kullanıcı adınızı 30 günde bir değiştirebilirsiniz.'));
+  panel.append(createElement('h2', '', t('editProfile')), createElement('p', 'panel-description', t('usernameNote')));
   const form = createElement('form', 'form-grid');
-  const usernameField = formField('Kullanıcı adı');
+  const usernameField = formField(t('username'));
   const username = document.createElement('input');
   username.name = 'username'; username.required = true; username.minLength = 3; username.maxLength = 24; username.value = profile.username;
   usernameField.append(username);
-  if (profile.username_change_available_at) usernameField.append(createElement('small', 'field-note', `Yeni değişiklik tarihi: ${formatDateTime(profile.username_change_available_at)}`));
-  const birthdayField = formField('Doğum günü');
+  if (profile.username_change_available_at) usernameField.append(createElement('small', 'field-note', t('usernameNextChange', { when: formatDateTime(profile.username_change_available_at) })));
+  const birthdayField = formField(t('birthday'));
   const birthday = document.createElement('input');
   birthday.type = 'date'; birthday.name = 'birthday'; birthday.min = '1900-01-01'; birthday.max = new Date().toISOString().slice(0, 10); birthday.value = profile.birthday || '';
   birthdayField.append(birthday);
-  const aboutField = formField('Hakkında', true);
+  const aboutField = formField(t('about'), true);
   const about = document.createElement('textarea');
-  about.name = 'about'; about.maxLength = 500; about.value = profile.about || ''; about.placeholder = 'Kendinizden kısaca bahsedin.';
+  about.name = 'about'; about.maxLength = 500; about.value = profile.about || ''; about.placeholder = t('aboutHint');
   aboutField.append(about);
   const actions = createElement('div', 'modal-actions form-field full-row');
   actions.append(button(t('save'), 'primary-button', 'submit'));
@@ -3960,29 +4515,29 @@ function renderApprovalScreen(approval = {}) {
   screen.replaceChildren();
   const card = createElement('section', 'status-card approval-card');
   const submitted = Boolean(approval.submitted);
-  card.append(createElement('p', 'eyebrow', submitted ? 'BAŞVURU İNCELENİYOR' : 'SON ADIM'));
+  card.append(createElement('p', 'eyebrow', submitted ? t('approvalReviewing') : t('approvalLastStep')));
   card.append(createElement('div', 'status-icon', submitted ? '⌛' : '?'));
-  card.append(createElement('h1', '', submitted ? 'Başvurun yetkili panelinde' : 'Neden katılmak istiyorsun?'));
+  card.append(createElement('h1', '', submitted ? t('approvalPendingTitle') : t('whyJoinTitle')));
   if (submitted) {
     const waiting = createElement('div', 'approval-waiting');
-    waiting.textContent = 'Gönderdiğin neden yetkili paneline düştü. İnceleme tamamlanınca hesabın açılır. 15 gün içinde yanıtlanmazsa başvuru kapanır; bu durumda 5 gün sonra yeniden yazabilirsin.';
+    waiting.textContent = t('approvalWaiting');
     card.append(waiting);
     if (approval.reason) {
       const preview = createElement('div', 'approval-reason-preview', approval.reason);
       card.append(preview);
     }
     if (approval.submitted_at) {
-      card.append(createElement('p', 'field-note', `Gönderim: ${formatDateTime(approval.submitted_at)}`));
+      card.append(createElement('p', 'field-note', t('submittedAt', { when: formatDateTime(approval.submitted_at) })));
     }
   } else {
-    card.append(createElement('p', '', 'Kısa ve dürüst yaz. Gönder’e basınca başvurun doğrudan yetkili paneline düşer.'));
+    card.append(createElement('p', '', t('approvalShortHonest')));
     const meta = createElement('div', 'approval-meta');
     const chip = createElement('div', 'approval-chip');
-    chip.append(createElement('span', '', 'Yetkili başvurunu okur, kabul veya red kararı verir.'));
+    chip.append(createElement('span', '', t('approvalChip')));
     meta.append(chip);
     card.append(meta);
     const form = createElement('form', 'approval-form');
-    const label = createElement('label', '', 'Neden katılmak istiyorsun?');
+    const label = createElement('label', '', t('whyJoinTitle'));
     label.setAttribute('for', 'join-reason');
     const reason = document.createElement('textarea');
     reason.id = 'join-reason';
@@ -3990,15 +4545,15 @@ function renderApprovalScreen(approval = {}) {
     reason.required = true;
     reason.minLength = 8;
     reason.maxLength = 1000;
-    reason.placeholder = 'Örneğin: astrofotoğraf ve astronomi odalarında öğrenmek, paylaşmak istiyorum.';
-    const hint = createElement('p', 'field-note', 'En az 8 karakter. Bu metin yalnızca yetkili panelinde görünür.');
-    const submit = button('Gönder', 'primary-button full', 'submit');
+    reason.placeholder = t('reasonPh');
+    const hint = createElement('p', 'field-note', t('approvalHint'));
+    const submit = button(t('send'), 'primary-button full', 'submit');
     form.append(label, reason, hint, submit);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const value = String(reason.value || '').trim();
       if (value.length < 8) {
-        toast('Katılma nedenini biraz daha açık yaz.', 'warning');
+        toast(t('reasonTooShort'), 'warning');
         reason.focus();
         return;
       }
@@ -4011,14 +4566,14 @@ function renderApprovalScreen(approval = {}) {
           showApp();
           await loadRooms(false);
         } else {
-          toast('Başvurun yetkili paneline düştü.');
+          toast(t('applicationSent'));
           renderApprovalScreen({ submitted: true, reason: value, submitted_at: new Date().toISOString() });
         }
       } catch (error) { displayError(error); }
     });
     card.append(form);
   }
-  const logout = button('Çıkış Yap', 'ghost-button full');
+  const logout = button(t('logout'), 'ghost-button full');
   logout.addEventListener('click', performLogout);
   card.append(logout);
   screen.append(card);
@@ -4028,7 +4583,7 @@ function renderApprovalScreen(approval = {}) {
 
 function handleApprovalBlock(block) {
   if (!block) return;
-  const until = block.blocked_until ? ` Tekrar başvuru zamanı: ${formatDateTime(block.blocked_until)}.` : '';
+  const until = block.blocked_until ? ` ${t('reapplyAt', { when: formatDateTime(block.blocked_until) })}` : '';
   toast(`${block.message}${until}`, 'warning', 9000);
 }
 
@@ -4038,27 +4593,27 @@ async function renderShop() {
   clearTimers();
   releasePendingImage();
   state.route = 'shop';
-  setHeader('AA Coin Mağazası', 'Çerçeveler ve özel görünümler', true);
+  setHeader(t('shopTitle'), t('shopSubtitle'), true);
   const view = $('#app-view');
   view.classList.remove('chat-mode');
   view.replaceChildren();
   const heading = createElement('header', 'page-heading');
   const copy = createElement('div');
-  copy.append(createElement('p', 'eyebrow', 'MAĞAZA'), createElement('h1', '', 'AA Coin Mağazası'), createElement('p', '', `Bakiyen: ${formatCoin(payload.wallet.aa_coins)} AA Coin. Fiyatlar her saat 200-1000 AA Coin arasında otomatik yenilenir.`));
+  copy.append(createElement('p', 'eyebrow', t('shopEyebrow')), createElement('h1', '', t('shopTitle')), createElement('p', '', t('shopBalance', { amount: formatCoin(payload.wallet.aa_coins) })));
   heading.append(copy);
   const grid = createElement('section', 'shop-grid');
   payload.items.forEach((item) => {
     const card = createElement('article', `shop-card${item.owned ? ' owned' : ''}`);
     card.append(createElement('div', `shop-preview frame-${item.id}`, item.emoji), createElement('h3', '', item.name), createElement('p', '', item.owned ? 'Bu çerçeve envanterinde.' : 'Profil fotoğrafının üstünde özel çerçeve olarak görünür.'), createElement('span', 'shop-price', `${item.price} AA Coin`));
     if (item.active) {
-      const badge = button('Takılı', 'ghost-button');
+      const badge = button(t('equipped'), 'ghost-button');
       badge.disabled = true;
-      const remove = button('Çıkart', 'secondary-button');
+      const remove = button(t('unequip'), 'secondary-button');
       guardedAction(remove, async () => {
         try {
           const result = await api('equip_frame', { method: 'POST', data: { frame_id: '' }, loading: true });
           mergeUserFromPayload(result.user);
-          toast(result.message);
+          toast(localizeServerMessage(result.message));
           await renderShop();
         } catch (error) { displayError(error); }
       });
@@ -4068,14 +4623,14 @@ async function renderShop() {
       row.append(badge, remove);
       card.append(row);
     } else {
-      const action = button(item.owned ? 'Tak' : 'Satın al', 'primary-button');
+      const action = button(item.owned ? t('equip') : t('buy'), 'primary-button');
       guardedAction(action, async () => {
         try {
           const result = item.owned
             ? await api('equip_frame', { method: 'POST', data: { frame_id: item.id }, loading: true })
             : await api('buy_frame', { method: 'POST', data: { frame_id: item.id }, loading: true });
           mergeUserFromPayload(result.user);
-          toast(result.message);
+          toast(localizeServerMessage(result.message));
           await renderShop();
         } catch (error) { displayError(error); }
       });
@@ -4121,7 +4676,7 @@ async function renderQuestHub() {
       try {
         const result = await api('claim_quest', { method: 'POST', data: { quest_id: quest.id }, loading: true });
         mergeUserFromPayload(result.user);
-        toast(result.message);
+        toast(localizeServerMessage(result.message));
         await renderQuestHub();
       } catch (error) { displayError(error); }
     });
@@ -4183,7 +4738,7 @@ function openMiniGame(gameId, title) {
     try {
       const result = await api('claim_game_reward', { method: 'POST', data: { game_id: gameId, score }, loading: true });
       mergeUserFromPayload(result.user);
-      toast(result.message);
+      toast(localizeServerMessage(result.message));
     } catch (error) { displayError(error); }
   };
   const tick = () => {
@@ -4217,13 +4772,13 @@ function renderSettings() {
   clearTimers();
   releasePendingImage();
   state.route = 'settings';
-  setHeader(t('settings'), 'Hesap ve gizlilik', true);
+  setHeader(t('settings'), t('settingsSubtitle'), true);
   const view = $('#app-view');
   view.classList.remove('chat-mode');
   view.replaceChildren();
 
   const panel = createElement('section', 'panel');
-  panel.append(createElement('h1', '', t('settings')), createElement('p', 'panel-description', 'Görünüm, dil ve gizlilik tercihlerinizi yönetin.'));
+  panel.append(createElement('h1', '', t('settings')), createElement('p', 'panel-description', t('settingsDesc')));
   const form = createElement('form');
   const grid = createElement('div', 'settings-grid');
   const themeField = formField(t('theme'));
@@ -4236,10 +4791,10 @@ function renderSettings() {
   const languageField = formField(t('language'));
   const language = document.createElement('select');
   language.name = 'language';
-  language.append(new Option('Türkçe', 'tr'), new Option('English', 'en'), new Option('Deutsch', 'de'), new Option('Français', 'fr'));
+  language.append(...SUPPORTED_LANGUAGES.map((code) => new Option(code === 'tr' ? 'Türkçe' : 'English', code)));
   language.value = state.user.language;
   languageField.append(language);
-  grid.append(themeField, languageField, switchField('show_read_receipts', t('readReceipts'), 'Mesajları okuduğunuzda görenler listesinde görünün.', state.user.show_read_receipts), switchField('show_last_seen', t('lastSeen'), 'Profilinizde çevrimiçi ve son görülme bilgisi gösterilsin.', state.user.show_last_seen));
+  grid.append(themeField, languageField, switchField('show_read_receipts', t('readReceipts'), t('readReceiptsDesc'), state.user.show_read_receipts), switchField('show_last_seen', t('lastSeen'), t('lastSeenDesc'), state.user.show_last_seen));
   const actions = createElement('div', 'modal-actions');
   actions.append(button(t('save'), 'primary-button', 'submit'));
   form.append(grid, actions);
@@ -4254,6 +4809,7 @@ function renderSettings() {
     try {
       await api('update_settings', { method: 'POST', data, loading: true });
       mergeUserFromPayload({ ...state.user, ...data });
+      rememberLanguage(data.language);
       applyTheme(data.theme); applyLanguage();
       toast(t('settingsSaved'));
       renderSettings();
@@ -4261,12 +4817,32 @@ function renderSettings() {
   });
   panel.append(form);
 
+  // Güvenlik paneli. İki düğme de yalnızca modal açar: ağ isteği üretmez ve
+  // openModal içeriği her seferinde baştan kurduğu için yinelemeye
+  // dayanıklıdır. Bu yüzden çift dokunuş kilidinin dışında tutulur — aksi
+  // halde modalı kapatıp 3 sn içinde tekrar basan kullanıcının dokunuşu
+  // sessizce yutulur ve düğme "bozuk" görünür.
+  const security = createElement('section', 'panel');
+  security.append(
+    createElement('h2', '', t('security')),
+    createElement('p', 'panel-description', t('securityDesc'))
+  );
+  const securityActions = createElement('div', 'modal-actions');
+  const changePasswordButton = button(t('changePassword'), 'secondary-button');
+  changePasswordButton.dataset.noActionLock = 'true';
+  changePasswordButton.addEventListener('click', openChangePassword);
+  const forgotPasswordButton = button(t('forgotPassword'), 'ghost-button');
+  forgotPasswordButton.dataset.noActionLock = 'true';
+  forgotPasswordButton.addEventListener('click', openForgotPassword);
+  securityActions.append(changePasswordButton, forgotPasswordButton);
+  security.append(securityActions);
+
   const danger = createElement('section', 'panel danger-panel');
-  danger.append(createElement('h2', '', t('deleteAccount')), createElement('p', 'panel-description', 'Hesabınız silinirse geri getirilemez. Tüm mesajlarınız ve verileriniz kalıcı olarak silinecektir. Emin misiniz?'));
+  danger.append(createElement('h2', '', t('deleteAccount')), createElement('p', 'panel-description', t('deleteAccountDesc')));
   const deleteButton = button(t('deleteAccount'), 'danger-button');
   deleteButton.addEventListener('click', openDeleteOwnAccount);
   danger.append(deleteButton);
-  view.append(panel, danger, createElement('p', 'credit', 'by beyib/beyip'));
+  view.append(panel, security, danger, createElement('p', 'credit', 'by beyib/beyip'));
   view.focus();
 }
 
@@ -4282,19 +4858,136 @@ function switchField(name, title, description, checked) {
   return row;
 }
 
+// Yeni şifre, sunucudaki validatePassword() ile BİREBİR aynı kurallardan
+// geçer. Kural burada da denetlenir ki kullanıcı hatayı istek gitmeden görsün;
+// son söz her zaman sunucunundur.
+function passwordRuleError(current, password, confirmation) {
+  if (!current) return t('ruleCurrentRequired');
+  if (password !== confirmation) return t('ruleMismatch');
+  if (password.length < 10 || password.length > 128) return t('ruleLength');
+  if (/\s/.test(password)) return t('ruleNoSpace');
+  if (!/\p{L}/u.test(password) || !/\p{N}/u.test(password) || !/[^\p{L}\p{N}]/u.test(password)) {
+    return t('ruleCharset');
+  }
+  if (password === current) return t('ruleSame');
+  return null;
+}
+
+// Giriş/kayıt ekranlarındaki yapının aynısı: etiket, .password-field sarmalı
+// ve Göster/Gizle düğmesi. Düğme etiketin İÇİNE konmaz; aksi halde etiketin
+// varsayılan davranışı her tıklamada odağı şifre alanına çeker.
+function passwordFieldWithToggle(id, name, labelText, autocomplete, options = {}) {
+  const label = document.createElement('label');
+  label.htmlFor = id;
+  label.textContent = labelText;
+  const wrapper = createElement('div', 'password-field');
+  const input = document.createElement('input');
+  input.id = id;
+  input.name = name;
+  input.type = 'password';
+  input.required = true;
+  input.maxLength = 128;
+  input.autocomplete = autocomplete;
+  // minlength yalnızca YENİ şifreye uygulanır: güncel şifre, kural
+  // sıkılaşmadan önce açılmış bir hesabın şifresi olabilir ve kısa diye
+  // reddedilirse kullanıcı kendi hesabına bir daha erişemez.
+  if (options.enforceRules) input.minLength = 10;
+  const toggle = button(t('show'), 'icon-text-button password-toggle');
+  toggle.setAttribute('aria-label', labelText);
+  toggle.addEventListener('click', () => {
+    const reveal = input.type === 'password';
+    input.type = reveal ? 'text' : 'password';
+    toggle.textContent = reveal ? t('hide') : t('show');
+  });
+  wrapper.append(input, toggle);
+  const parts = [label, wrapper];
+  if (options.note) parts.push(createElement('p', 'field-note', options.note));
+  return { parts, input };
+}
+
+function openChangePassword() {
+  const content = createElement('div');
+  content.append(createElement('p', 'modal-copy', t('changePasswordCopy')));
+  const form = createElement('form', 'auth-form');
+  const current = passwordFieldWithToggle('change-password-current', 'current_password', t('currentPassword'), 'current-password');
+  const next = passwordFieldWithToggle('change-password-new', 'password', t('newPassword'), 'new-password', { enforceRules: true });
+  const confirm = passwordFieldWithToggle('change-password-confirm', 'password_confirm', t('newPasswordConfirm'), 'new-password', {
+    enforceRules: true,
+    note: t('passwordRules')
+  });
+  // Hata, formun içinde gösterilir: toast 6 sn'de kaybolur ama kullanıcı
+  // hangi kurala takıldığını okuyup alanı düzeltmek zorundadır.
+  const notice = createElement('p', 'field-note danger-text');
+  notice.hidden = true;
+  const actions = createElement('div', 'modal-actions');
+  const cancel = button(t('cancel'), 'ghost-button');
+  cancel.addEventListener('click', closeModal);
+  const submit = button(t('save'), 'primary-button', 'submit');
+  actions.append(cancel, submit);
+  form.append(...current.parts, ...next.parts, ...confirm.parts, notice, actions);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(form));
+    const problem = passwordRuleError(data.current_password, data.password, data.password_confirm);
+    if (problem) {
+      notice.textContent = problem;
+      notice.hidden = false;
+      // İstek atılmadı, dolayısıyla korunacak bir şey de yok: kilit geri
+      // alınır ki kullanıcı alanı düzeltir düzeltmez tekrar gönderebilsin.
+      releaseActionLock(form, submit);
+      return;
+    }
+    notice.hidden = true;
+    try {
+      const payload = await api('change_password', { method: 'POST', data, loading: true });
+      closeModal();
+      toast(localizeServerMessage(payload.message) || t('passwordChanged'));
+    } catch (error) {
+      notice.textContent = localizeServerMessage(error instanceof Error ? error.message : String(error));
+      notice.hidden = false;
+      // İstek tamamlandı (ayakta istek yok); tekrar denemenin önü açılır.
+      releaseActionLock(form, submit);
+    }
+  });
+  content.append(form);
+  openModal(t('changePassword'), content, t('security'));
+}
+
+function openForgotPassword() {
+  // Metin BİLEREK böyle yazılır. Platformda kendi kendine sıfırlama ucu yok
+  // (users tablosunda e-posta kolonu bile yok) ama bunu kullanıcıya "şu eksik,
+  // bu yok" diye anlatmak hem gereksiz hem de platformu kötülemek olur.
+  // Yetkilinin hangi paneli hangi düğmeyle kullandığı da kullanıcının işi
+  // değildir. Kullanıcının bilmesi gereken üç şey var: ne yapacak, bu neden
+  // böyle ve sonrasında ne olacak. (Metni kısaltırken bu üçünü bozma.)
+  const content = createElement('div');
+  content.append(
+    createElement('p', 'modal-copy', t('forgotP1')),
+    createElement('p', 'modal-copy', t('forgotP2')),
+    createElement('p', 'modal-copy', t('forgotP3')),
+    createElement('p', 'modal-copy', t('forgotP4'))
+  );
+  const actions = createElement('div', 'modal-actions');
+  const done = button(t('close'), 'primary-button');
+  done.addEventListener('click', closeModal);
+  actions.append(done);
+  content.append(actions);
+  openModal(t('forgotPassword'), content, t('security'));
+}
+
 function openDeleteOwnAccount() {
   const content = createElement('div');
-  content.append(createElement('p', 'modal-copy', 'Hesabınız silinirse geri getirilemez. Tüm mesajlarınız ve verileriniz kalıcı olarak silinecektir. Emin misiniz?'));
+  content.append(createElement('p', 'modal-copy', t('deleteAccountDesc')));
   const form = createElement('form', 'auth-form');
   const username = document.createElement('input');
-  username.name = 'username'; username.placeholder = 'Kullanıcı adı'; username.required = true; username.autocomplete = 'username';
+  username.name = 'username'; username.placeholder = t('username'); username.required = true; username.autocomplete = 'username';
   const password = document.createElement('input');
-  password.name = 'password'; password.type = 'password'; password.placeholder = 'Şifre'; password.required = true; password.autocomplete = 'current-password';
+  password.name = 'password'; password.type = 'password'; password.placeholder = t('password'); password.required = true; password.autocomplete = 'current-password';
   const confirm = document.createElement('input');
-  confirm.name = 'password_confirm'; confirm.type = 'password'; confirm.placeholder = 'Şifre tekrarı'; confirm.required = true;
+  confirm.name = 'password_confirm'; confirm.type = 'password'; confirm.placeholder = t('passwordConfirm'); confirm.required = true;
   const actions = createElement('div', 'modal-actions');
   const cancel = button(t('cancel'), 'ghost-button'); cancel.addEventListener('click', closeModal);
-  actions.append(cancel, button('Kalıcı Olarak Sil', 'danger-button', 'submit'));
+  actions.append(cancel, button(t('deletePermanent'), 'danger-button', 'submit'));
   form.append(username, password, confirm, actions);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -4304,7 +4997,7 @@ function openDeleteOwnAccount() {
     } catch (error) { displayError(error); }
   });
   content.append(form);
-  openModal('Hesabı kalıcı olarak sil', content, 'GERİ ALINAMAZ İŞLEM');
+  openModal(t('deleteAccountTitle'), content, t('deleteAccountKicker'));
 }
 
 async function openInvite() {
@@ -4314,35 +5007,35 @@ async function openInvite() {
   const countdown = createElement('p', 'field-note');
   let update;
   if (available) {
-    content.append(createElement('p', 'modal-copy', 'Bu kodu topluluğa davet etmek istediğiniz kişiyle paylaşın. Her kod yalnızca bir kişiyi içeri alır.'));
+    content.append(createElement('p', 'modal-copy', t('inviteShare')));
     const box = createElement('div', 'invite-code-box');
     const code = createElement('div', 'invite-code', payload.invite_code);
     const copy = button(t('copy'), 'primary-button');
     copy.addEventListener('click', () => copyText(payload.invite_code));
     box.append(code, copy);
     content.append(box);
-    update = () => { countdown.textContent = `Davet kodun saat başında değiştirilecek, kalan süre: ${remainingText(payload.next_rotation_at, 'invite')}`; };
+    update = () => { countdown.textContent = t('inviteRotate', { left: remainingText(payload.next_rotation_at, 'invite') }); };
   } else {
     // Kod hakkı dolduğunda kod hiç gösterilmez; eski kod da geçersizdir.
     content.append(
       createElement('p', 'modal-copy', inviteUsedMessage(payload.used_by)),
-      createElement('div', 'admin-critical-warning', 'Kodun kullanıldığı için gösterilmiyor ve eski kod artık geçersiz.')
+      createElement('div', 'admin-critical-warning', t('inviteUsedNote'))
     );
-    if (payload.used_at) content.append(createElement('p', 'field-note', `Kullanıldığı zaman: ${formatDateTime(payload.used_at)}`));
-    update = () => { countdown.textContent = `Yeni davet kodun saat başında verilecek, kalan süre: ${remainingText(payload.next_rotation_at, 'invite')}`; };
+    if (payload.used_at) content.append(createElement('p', 'field-note', t('inviteUsedAt', { when: formatDateTime(payload.used_at) })));
+    update = () => { countdown.textContent = t('inviteNextAt', { left: remainingText(payload.next_rotation_at, 'invite') }); };
   }
   update();
   const why = button(t('why'), 'ghost-button');
   why.addEventListener('click', () => {
     const reason = createElement('div');
-    reason.append(createElement('p', 'modal-copy', 'Güvenlik nedeniyle davet kodları düzenli olarak yenilenir ve her kod yalnızca bir kişiyi içeri alır. Bu sayede platforma yetkisiz erişim engellenir ve topluluğun gizliliği korunur.'));
+    reason.append(createElement('p', 'modal-copy', t('inviteWhyCopy')));
     const actions = createElement('div', 'modal-actions');
     const close = button(t('close'), 'primary-button'); close.addEventListener('click', closeModal); actions.append(close); reason.append(actions);
-    openModal('Davet kodları neden yenilenir?', reason, 'GÜVENLİK POLİTİKASI');
+    openModal(t('inviteWhyTitle'), reason, t('inviteWhyKicker'));
   });
   content.append(countdown, why);
   const timer = window.setInterval(update, 1000);
-  openModal(t('invite'), content, available ? 'DAVETİYE KODUNUZ' : 'DAVET KODUN KULLANILDI', false, () => window.clearInterval(timer));
+  openModal(t('invite'), content, available ? t('inviteCodeKicker') : t('inviteUsedKicker'), false, () => window.clearInterval(timer));
 }
 
 async function copyText(text) {
@@ -4414,23 +5107,65 @@ function renderAdminPanel() {
 
 function renderPendingApprovals(container) {
   container.replaceChildren(createElement('h2', '', 'Onaylanmayı Bekleyenler'), createElement('p', 'panel-description', 'Başvuruları kabul edebilir veya reddedebilirsin. 15 gün yanıtlanmayan başvurular sistem tarafından kapatılır.'));
+
+  // Araç çubuğu: moderatör listeyi istediği an tazeler ve kaç hesabın
+  // beklediğini SAYIYLA görür. Sekme açıkken yeni kayıt düşerse liste
+  // kendiliğinden tazelenmez; bu düğme o boşluğu kapatır.
+  const toolbar = createElement('div', 'approval-toolbar');
+  const refresh = button('Herkesi Gör / Yenile', 'secondary-button');
+  refresh.type = 'button';
+  // KÖK NEDEN DÜZELTMESİ: installGentleActionGuard() .secondary-button
+  // tıklamalarını 3 sn boyunca kilitler ve bu aradaki tıklamaları
+  // stopImmediatePropagation ile SESSİZCE yutar. Çift gönderim riski olmayan
+  // salt-okunur bir yenileme için bu kilit, "düğmeye bastım ama bekleyenler
+  // çıkmadı" şikâyetinin istemci tarafındaki asıl nedeniydi. Guard'ın kendi
+  // kaçış anahtarı (data-no-action-lock) kullanılır; yine de aynı anda tek
+  // istek uçuşta kalır, fazlası sıraya alınır (aşağıdaki loading/queued).
+  refresh.setAttribute('data-no-action-lock', '');
+  const status = createElement('p', 'approval-status');
+  toolbar.append(refresh, status);
+  // Eski auth uyarısı: nedeni yazılmamış bekleyenler eski sunucu sorgusunda
+  // gizlenirdi. Sessiz boş liste yerine moderatöre NE yapacağını söyleriz.
+  const warn = createElement('div', 'approval-warn');
+  warn.hidden = true;
   const list = createElement('div', 'admin-user-list');
   list.append(createElement('p', 'panel-description', 'Başvurular yükleniyor…'));
-  container.append(list);
+  container.append(toolbar, warn, list);
+
+  const REFRESH_LABEL = 'Herkesi Gör / Yenile';
   let loadGeneration = 0;
+  let loading = false; // uçuşta bir yükleme var mı
+  let queued = false;  // meşgulken gelen tıklama sıraya alındı mı
   const deciding = new Set();
   const load = async () => {
     const generation = ++loadGeneration;
+    loading = true;
+    refresh.textContent = 'Yenileniyor…';
     try {
-      const payload = await api('admin_pending_approvals', { noDedupe: true });
+      status.textContent = 'Liste yenileniyor…';
+      const payload = await api('admin_pending_approvals', { noDedupe: true, priority: true });
       if (generation !== loadGeneration || state.route !== 'admin' || state.adminTab !== 'approvals') return;
       const items = Array.isArray(payload.pending) ? payload.pending : [];
+      const modern = payload.includes_unsubmitted === true;
+      warn.hidden = modern;
+      if (!modern) {
+        warn.replaceChildren(
+          createElement('strong', '', 'Sunucudaki auth.php bu sürümden eski.'),
+          createElement('span', '', ` Nedeni henüz yazılmamış bekleyen hesaplar eski sorguda gizlenir. asra-yukleme paketindeki auth.php dosyasını sunucuya yükleyip bu sekmeyi yenileyin. Sunucudaki sürüm: ${String(payload.build || 'bilinmiyor (v30 ve öncesi)')}.`)
+        );
+      }
+      const written = items.filter((item) => item.submitted_at).length;
+      status.textContent = `${items.length} bekleyen hesap · ${written} nedeni yazılmış · ${items.length - written} nedeni henüz yazılmamış · son yenileme ${new Date().toLocaleTimeString(currentLanguage(), { hour: '2-digit', minute: '2-digit' })}`;
+      list.dataset.refreshedAt = String(Date.now());
       list.replaceChildren();
-      if (!items.length) { list.append(createElement('p', 'panel-description', 'Bekleyen başvuru yok.')); return; }
+      if (!items.length) {
+        list.append(createElement('p', 'panel-description', modern ? 'Bekleyen başvuru yok.' : 'Liste güvenle okunamıyor: sunucu sürümü eski, yukarıdaki uyarıya bakın.'));
+        return;
+      }
       items.forEach((item) => {
         const row = createElement('div', 'admin-user-row');
         const copy = createElement('div', 'admin-user-copy');
-        copy.append(createElement('strong', '', item.username), createElement('small', '', item.submitted_at ? `Gönderim: ${formatDateTime(item.submitted_at)}` : 'Neden henüz gönderilmedi'));
+        copy.append(createElement('strong', '', item.username), createElement('small', '', item.submitted_at ? `Gönderim: ${formatDateTime(item.submitted_at)}` : `Kayıt: ${formatDateTime(item.created_at)} · katılma nedeni henüz yazılmadı`));
         copy.append(createElement('div', 'admin-approval-reason', item.reason || 'Kullanıcı henüz katılma nedenini yazmadı.'));
         const actions = createElement('div', 'admin-user-actions');
         const accept = button('Kabul et', 'primary-button');
@@ -4466,9 +5201,30 @@ function renderPendingApprovals(container) {
     } catch (error) {
       if (generation !== loadGeneration || state.route !== 'admin' || state.adminTab !== 'approvals') return;
       if (error.code === 'ADMIN_REQUIRED') { state.adminActive = false; openAdmin(); return; }
+      status.textContent = 'Liste alınamadı: ' + (error && error.message ? error.message : 'bilinmeyen hata');
       displayError(error);
+    } finally {
+      if (generation === loadGeneration) {
+        loading = false;
+        refresh.textContent = REFRESH_LABEL;
+        // Meşgulken gelen tıklama kaybolmaz: istek biter bitmez liste bir kez
+        // daha tazelenir. Moderatör "bastım ama hiçbir şey olmadı" yaşamaz.
+        if (queued) {
+          queued = false;
+          status.textContent = 'Sıradaki yenileme çalışıyor…';
+          load();
+        }
+      }
     }
   };
+  refresh.addEventListener('click', () => {
+    if (loading) {
+      queued = true;
+      status.textContent = 'Yenileme sıraya alındı — mevcut istek biter bitmez liste tekrar tazeleniyor…';
+      return;
+    }
+    load();
+  });
   load();
 }
 
@@ -4953,6 +5709,33 @@ function lockControlBriefly(control, duration = GENTLE_ACTION_LOCK_MS) {
   return true;
 }
 
+/**
+ * Çift dokunuş kilidini geri alır.
+ *
+ * Kilit, AYAKTA bir ağ isteği varken aynı eylemin tekrar gönderilmesini
+ * engeller. İstemci tarafında reddedilen ya da hata yanıtıyla dönen bir
+ * gönderim ayakta istek BIRAKMAZ; kilit öyle de sürerse kullanıcı alanı
+ * düzeltip tekrar bastığında dokunuşu 3 sn boyunca SESSİZCE yutulur ve form
+ * bozuk görünür. lockControlBriefly yalnızca sınıf/aria yazdığı için kilidi
+ * geri alan tek yer burasıdır: zamanlayıcı iptal edilir, görsel durum eski
+ * hâline döndürülür ve WeakMap kayıtları silinir (zamanlayıcının kendi
+ * geri çağrısı kayıt silindiğini görüp zararsızca çıkar).
+ */
+function releaseActionLock(...elements) {
+  elements.forEach((element) => {
+    if (!(element instanceof HTMLElement)) return;
+    const entry = guardedControlState.get(element);
+    if (entry) {
+      if (entry.timer) window.clearTimeout(entry.timer);
+      element.classList.remove('temporarily-locked');
+      if (entry.originalAriaDisabled === null) element.removeAttribute('aria-disabled');
+      else element.setAttribute('aria-disabled', entry.originalAriaDisabled);
+      guardedControlState.delete(element);
+    }
+    if (element instanceof HTMLFormElement) guardedFormState.delete(element);
+  });
+}
+
 function installGentleActionGuard() {
   const guardedSelector = [
     'button[type="submit"]', '.room-card', '.asra-ai-card', '.ai-suggestion-button',
@@ -5001,7 +5784,7 @@ function bindStaticEvents() {
       $('#auth-options').hidden = false;
       applyDeviceAccountRestriction();
       $('#login-username').focus();
-      toast('Davetiye kodu doğrulandı.');
+      toast(t('inviteVerified'));
       handleApprovalBlock(payload.approval_block);
     } catch (error) { displayError(error); }
   });
@@ -5051,7 +5834,7 @@ function bindStaticEvents() {
     const input = $('input', toggle.parentElement);
     const show = input.type === 'password';
     input.type = show ? 'text' : 'password';
-    toggle.textContent = show ? 'Gizle' : 'Göster';
+    toggle.textContent = show ? t('hide') : t('show');
   }));
 
   $('#coin-pill').addEventListener('click', () => renderShop().catch(displayError));
@@ -5149,7 +5932,7 @@ function buildRefreshUrl() {
 async function performAppRefresh() {
   clearTimers();
   releasePendingImage();
-  setLoading(true, 'Yenileniyor', 'Güncel sürüm alınıyor');
+  setLoading(true, t('refreshingNow'), t('refreshing'));
   try {
     if (window.caches?.keys) {
       const keys = await window.caches.keys();
@@ -5167,13 +5950,13 @@ async function performAppRefresh() {
 function openRefreshPrompt() {
   const content = createElement('div');
   content.append(
-    createElement('p', 'modal-copy', 'Yenilemek ister misin? Bir hata gördüğünde veya yeni güncelleme geldiğinde yenilersen en güncel sürümü alırsın.'),
-    createElement('p', 'field-note', 'Oturumun açık kalır; mesajların ve hesabın etkilenmez. Yalnızca uygulama yeniden yüklenir.')
+    createElement('p', 'modal-copy', t('refreshTitle')),
+    createElement('p', 'field-note', t('refreshNote'))
   );
   const actions = createElement('div', 'modal-actions');
   const cancel = button(t('cancel'), 'ghost-button');
   cancel.addEventListener('click', closeModal);
-  const refresh = button('Yenile', 'primary-button');
+  const refresh = button(t('menuRefresh'), 'primary-button');
   refresh.addEventListener('click', () => {
     refresh.disabled = true;
     closeModal();
@@ -5181,13 +5964,13 @@ function openRefreshPrompt() {
   });
   actions.append(cancel, refresh);
   content.append(actions);
-  openModal('Yenile', content, 'UYGULAMAYI YENİLE');
+  openModal(t('menuRefresh'), content, t('refreshKicker'));
   window.setTimeout(() => refresh.focus(), 0);
 }
 
 async function performLogout() {
   try {
-    await api('logout', { method: 'POST', loading: true, loadingTitle: 'Oturum kapatılıyor' });
+    await api('logout', { method: 'POST', loading: true, loadingTitle: t('closingSession') });
     try { localStorage.removeItem('asra_active_session'); } catch (_) {}
     window.location.reload();
   } catch (error) {
@@ -5200,10 +5983,11 @@ let recoveryInProgress = false;
 async function initialize() {
   recoveryInProgress = false;
   applyTheme((() => { try { return localStorage.getItem('asra_theme'); } catch (_) { return null; } })() || 'dark');
+  applyLanguage();
   const hadActiveSession = (() => { try { return localStorage.getItem('asra_active_session') === '1'; } catch (_) { return false; } })();
   let sessionAuthenticated = false;
   bindStaticEvents();
-  setLoading(true, 'Asra Chat', 'Güvenli bağlantı hazırlanıyor');
+  setLoading(true, 'Asra Chat', t('secureConn'));
   try {
     const payload = await api('session');
     state.csrf = payload.csrf_token;
@@ -5241,8 +6025,8 @@ async function initialize() {
       $('#app-shell').hidden = true;
       setLoading(
         true,
-        protectedWait ? 'Sunucu koruması etkin' : 'Güncelleme uygulanıyor',
-        `Aktif oturumunuz korunuyor, ${retrySeconds} saniye sonra yeniden bağlanılacak`
+        protectedWait ? t('protectionActive') : t('applyingUpdate'),
+        t('sessionKept', { seconds: retrySeconds })
       );
       window.setTimeout(() => initialize(), retrySeconds * 1000);
       return;

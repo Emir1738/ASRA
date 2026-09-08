@@ -121,6 +121,10 @@ run "message_delete"     bash _tests/message_delete_test.sh
 run "csrf_heal_test"     bash _tests/csrf_heal_test.sh
 run "cooldown_test"      node _tests/cooldown_test.js
 run "ui_fix_browser"     bash _tests/ui_fix_browser_test.sh
+run "retention_countdown" bash _tests/retention_countdown_test.sh
+run "password_change"    bash _tests/password_change_test.sh
+run "i18n"               bash _tests/i18n_test.sh
+run "approval_visibility" bash _tests/approval_visibility_test.sh
 
 kill $PHP_PID 2>/dev/null
 echo "############ $LABEL ÖZET: ✓$TOTAL_PASS  ✗$TOTAL_FAIL ############"

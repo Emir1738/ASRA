@@ -45,6 +45,70 @@ açıkça engellenmiştir.
   (`delete_message` / `undo_delete_message` / `finalize_message_delete`,
   sunucuda hash'li geri-alma belirteci). Akış `_tests/message_delete_test.sh`
   ile otomatik test edilir.
+- **Şifre değiştirme (Ayarlar > Güvenlik):** kullanıcı güncel şifresini ve yeni
+  şifresini **iki kez** girer; güncel şifre doğrulanır, yeni şifre kayıt
+  akışıyla **birebir aynı** kurallardan geçer (`validatePassword` tek kaynak),
+  hepsi tutarsa hash yenilenir (`change_password`). "Şifremi unuttum" ise
+  ağ isteği üretmeyen bir açıklama modalı açar: kullanıcıya ne yapacağı
+  (yetkiliyle iletişime geçme), bunun neden böyle olduğu ve sonrasında ne
+  olacağı anlatılır.
+  Teknik gerçek: kendi kendine sıfırlama ucu **yok** (`users` tablosunda
+  e-posta kolonu bile yok), tek yol yetkilidir. Ama kullanıcıya bakan metin
+  BİLEREK bir eksiklik itirafı gibi yazılmaz — "bu platformda e-posta
+  doğrulaması yok" demek platformu kötülemektir, yetkilinin hangi paneli
+  kullandığını anlatmak da kullanıcının işi değildir. Bu ton
+  `_tests/password_change_browser_test.js` içinde olumsuz doğrulamalarla
+  kilitlidir (e-posta anılmamalı, "yapamazsın" dili olmamalı, Admin Paneli
+  geçmemeli, metin ≥4 paragraf ve ≥400 karakter olmalı). Değişimde `session_version` yükselir: **diğer** cihazların
+  oturumları ve hatırla-anahtarları düşer, bu isteği yapan cihazınki korunur.
+  Koruma giriş ucuyla aynı politikadır: yalnızca **hatalı güncel şifre** sayılır
+  (5 deneme / 15 dk), kural hataları bütçeyi tüketmez, başarı sayacı sıfırlar ve
+  kilit **kullanıcı** bazlıdır (paylaşımlı hosting'de aynı IP'deki başkası
+  etkilenmez). Akış `_tests/password_change_test.sh` ile otomatik test edilir.
+- **Çok dillilik (tr + en):** dil seçimi artık GERÇEKTEN uygulanıyor. Kök neden
+  üçlüydü: `applyLanguage()` yalnızca `<html lang>` yazıyordu (statik HTML ve
+  açık ekran Türkçe kalıyordu), üye yolculuğundaki yüzlerce metin sözlükte
+  değil kodun içinde sabit Türkçe duruyordu ve sunucu hata mesajları Türkçe
+  dönüp olduğu gibi gösteriliyordu. Çözüm: 292 anahtarlı tr/en sözlük +
+  `data-i18n` / `-ph` / `-aria` / `-title` bağlaması + `t(key, {param})`
+  yer tutucu desteği + sunucu **cümle**→anahtar eşlemesi (`SERVER_MESSAGE_I18N`;
+  aynı hata kodu farklı bağlamlarda farklı cümle taşıdığı için kod eşlemesi
+  bilinçli seçilmedi, bağlam bozulurdu) + çıkışta/giriş ekranında tercih
+  `localStorage` ile hatırlanıyor (tema ile aynı desen). de/fr seçenekleri
+  kaldırıldı, yalnızca tr + en var. Türkçe arayüz birebir korunur — bu,
+  regresyon doğrulamasıyla testte kilitlidir.
+  **Kapsam sınırı (bilinçli):** üye yüzeyleri çevrilir; admin paneli, Asra AI
+  içeriği ve arayüzü, oda kataloğunun tohum adları/açıklamaları ile görev ve
+  oyun metinleri çevrilmez. Sunucunun insan dili kod haritasında yoksa
+  sunucunun kendi (Türkçe) mesajı gösterilir.
+  Akış `_tests/i18n_test.sh` ile otomatik test edilir (statik + Chromium E2E).
+- **Onay kuyruğu görünürlüğü:** yeni kayıt `pending` doğar ve kullanıcıya
+  "SON ADIM" ekranında katılma nedenini yazması sunulur; nedeni yazsa da
+  yazmasa da hesap **Onaylanmayı Bekleyenler** listesine düşer. Kök neden:
+  `admin_pending_approvals` sorgusu `approval_submitted_at IS NOT NULL`
+  taşıyordu — nedeni henüz yazılmamış bekleyen hesaplar (ekranı kapatıp giden,
+  eski istemci/APK'dan gelen, geçmişten kalan satırlar) moderatöre HİÇ
+  görünmüyordu. Artık bekleyen HER hesap listelenir; gönderilmiş başvurular
+  önde, nedeni yazılmamışlar kayıt tarihiyle arkadan gelir ve satırda
+  "katılma nedeni henüz yazılmadı" notu dürüstçe gösterilir. 15 gün
+  yanıtlanmayan **gönderilmiş** başvurular politika gereği sistemce kapatılır;
+  nedeni yazılmamışlar kapatılmaz, moderatörün kararını bekler.
+  Akış `_tests/approval_visibility_test.sh` ile otomatik test edilir
+  (API + gerçek Chromium'da admin paneli).
+- **Bekleyenleri gör/yenile (v31):** sekmenin üstünde **Herkesi Gör / Yenile**
+  düğmesi ve sayaç satırı var: "N bekleyen hesap · X nedeni yazılmış · Y nedeni
+  henüz yazılmamış · son yenileme SS:DD". Liste sekme açılır açılmaz da
+  kendiliğinden dolu gelir; düğme yalnızca tazelemek içindir.
+  Kök neden düzeltmeleri: (1) `installGentleActionGuard` `.secondary-button`
+  tıklamalarını 3 sn kilitliyor ve aradaki tıklamaları `stopImmediatePropagation`
+  ile sessizce yutuyordu — düğme `data-no-action-lock` ile bu kilidin dışında,
+  meşgulken gelen tıklama da kaybolmuyor, sıraya alınıyor; (2) arka plan
+  yoklamalarının biriktirdiği istemci hız-sınırı beklemesi elle yenilemeyi
+  15 sn'ye kadar geciktiriyordu — elle istek `priority` ile bekletilmiyor;
+  (3) sunucudaki `auth.php` eskiyse (yanıtta `includes_unsubmitted` yoksa)
+  liste sessizce boş kalmıyor, moderatöre hangi dosyayı yükleyeceğini söyleyen
+  uyarı çıkıyor. Sunucu sürümü `?action=health` yanıtındaki `build` alanından
+  doğrulanır (bu sürüm: `v31`).
 - **Hit koruması (kalıcı):** 60/dk host bütçesi + uç bazlı limitler; yetkili
   "erişim kodu" aç/kapa + otomatik sabit kod üretimi.
 - **Güvenli oturum:** hatırla-token ile sessiz oturum kurtarma (uygulama
@@ -52,8 +116,8 @@ açıkça engellenmiştir.
   uygulama kimliğiyle.
 - **CSP:** inline style/script SHA-256 hash'li (katı) ve `connect-src 'self'` —
   üçüncü taraf hiçbir kaynağa bağlantı açılmaz.
-  Güncel hash'ler — style: `AJq7aQ+BKk/PkffXK654RHhka5zTLWEWycQiD1U8n1c=`,
-  script: `iuOSiadMESjI5wKFLf4LSPbBNWS33CsDQYAjvFUiO+I=`.
+  Güncel hash'ler — style: `aCJi/6WSe8xD5uQIEshH2B/h/HTB9JPRsZZZ0jnFjrQ=`,
+  script: `kmwzOB/bAupQPp0VnSFx1lE8k9/+z6j11dpVyrQ5NqM=`.
   CSS/JS her değiştiğinde `bash _tests/csp_hash_check.sh asra-site-fix/index.html`
   çalıştırılmalı; hash tutmazsa sayfa tarayıcıda tamamen çalışmaz.
 
@@ -316,6 +380,10 @@ cd asra-site-fix && PHP_CLI_SERVER_WORKERS=8 \
 | `bash _tests/message_delete_test.sh` | silme + 4 sn undo + kalıcı silme + sahiplik/çakışma hataları |
 | `bash _tests/csrf_heal_test.sh` | 419 kendini-onarma (oturum kaybı) |
 | `node _tests/cooldown_test.js` | 5 sn cooldown saniye saniye (Chromium) |
+| `bash _tests/retention_countdown_test.sh` | **Saklama süresi / geri sayım:** sıfır-istek oda girişinde (önbellek dolu + rozet 0) sayacın `hesaplanıyor…`da takılı kalmadığı, kalan sürenin doğru hesaplandığı, vadesi dolmuş önbellek satırlarının **hayalet mesaj** olarak çizilmediği, bozuk zaman damgasının dürüst duruma düştüğü ve `INTERVAL 24 HOUR` yerine tek kaynak `MESSAGE_RETENTION_HOURS` kullanıldığı |
+| `bash _tests/password_change_test.sh` | **Şifre değiştirme:** uç kaydı (GET 405 / oturumsuz 401 / CSRF'siz 419), güncel şifre doğrulaması, yeni şifre kurallarının **tüm dalları**, aynı şifre reddi, hash'in gerçekten değişmesi, `session_version`'ın tam 1 artması, diğer cihazların hatırla-anahtarlarının silinip bu cihazınkinin korunması, brute-force politikası (kural hatası bütçeyi tüketmez / başarı sıfırlar / 5'ten sonra 429 / kilit kullanıcı bazlı) ve arayüz: üç şifre alanı, Göster-Gizle, zayıf şifrenin **istek atılmadan** yerinde reddi, yetkili mesajı, uçtan uca eski şifre reddi + yeni şifre girişi |
+| `bash _tests/i18n_test.sh` | **Çok dillilik (tr+en):** statik bütünlük (tr/en anahtar paritesi, koddaki her `t()` ve statik HTML'deki her `data-i18n*` değerinin sözlükte olması, `{param}` yer tutucu eşitliği, de/fr seçeneğinin kalkması) + API dil beyaz listesi (`en` kabul, `tr`ye dönüş) + gerçek Chromium'da uçtan uca: Türkçe arayüzün bozulmadığı, English seçilince ayarlar/menü/ana sayfa/şifre modalı/kural hatası/"şifremi unuttum" modalı/tarih biçiminde tek Türkçe karakter kalmadığı, sunucu hata mesajının İngilizceye çevrildiği, çıkıştan sonra giriş ekranının İngilizce kaldığı ve Türkçeye geri dönüşün çalıştığı |
+| `bash _tests/approval_visibility_test.sh` | **Onay kuyruğu görünürlüğü:** bekleyen her hesabın (nedeni yazılmış/yazılmamış) `admin_pending_approvals` listesine düştüğü, sıralamanın gönderilmiş-önde olduğu, `submitted` bayrağı ve null gönderim zamanının dürüst döndüğü, admin doğrulamasız oturumun 403 aldığı, kabul/red kararlarının nedeni yazılmamış hesaplarda da çalıştığı ve gerçek Chromium'da admin panelinin nedeni yazılmamış hesabı kayıt tarihi + "katılma nedeni henüz yazılmadı" notuyla çizdiği |
 | `bash _tests/csp_hash_check.sh` | CSP hash / içerik bütünlüğü |
 
 Yardımcılar (suite'e dâhil değil):
@@ -327,14 +395,17 @@ Yardımcılar (suite'e dâhil değil):
 
 ### Son koşu
 
-`bash /home/user/.setup/run-tests.sh /home/user/projects/ASRA-fcm <etiket>`
+`bash .setup/run-tests.sh <proje-kökü> <etiket>`
 
-Son tam koşu: `v26` (arayüz onarımları: görenler, geri sayım, kırpılma).
+Son tam koşu: `v31` (**bekleyenleri gör/yenile:** Herkesi Gör / Yenile düğmesi,
+sayaç satırı, tıklama yutan 3 sn eylem kilidinin kökten çözümü, elle yenilemede
+hız-sınırı beklemesinin atlanması ve eski sunucu sürümü uyarısı). Önceki: `v30`
+(onay kuyruğu görünürlüğü), `v29` (çok dillilik onarımı: tr + en).
 
 | Suite | Sonuç |
 |---|---|
 | `csp_hash_check` | ✓2 ✗0 |
-| `no_notification_test` | ✓76 ✗0 |
+| `no_notification_test` | ✓70 ✗0 |
 | `fresh_db_test` | ✓30 ✗0 |
 | `throttle_release_test` | ✓11 ✗0 |
 | `legacy_schema_test` | ✓5 ✗0 |
@@ -343,7 +414,11 @@ Son tam koşu: `v26` (arayüz onarımları: görenler, geri sayım, kırpılma).
 | `csrf_heal_test` | ✓5 ✗0 |
 | `cooldown_test` | ✓20 ✗0 |
 | `ui_fix_browser_test` | ✓18 ✗0 |
-| **TOPLAM** | **✓249 ✗0** |
+| `retention_countdown_test` | ✓45 ✗0 |
+| `password_change_test` | ✓130 ✗0 |
+| `i18n_test` | ✓65 ✗0 |
+| `approval_visibility_test` | ✓62 ✗0 |
+| **TOPLAM** | **✓545 ✗0** |
 
 ## Sunucuya yükleme
 

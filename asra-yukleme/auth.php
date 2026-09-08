@@ -45,6 +45,11 @@ const PERMANENT_INVITE_CODE = 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
 // yeniden çalışır (idempotenttir) ve yeni tablo/tohumlar eklenir.
 const SCHEMA_VERSION_KEY = 'schema:runtime:v19';
 const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
+// Sunucu sürüm işareti: /auth.php?action=health yanıtında döner. Yükleme
+// sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
+// istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
+// bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
+const ASRA_BUILD = 'v31';
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MESSAGE_RETENTION_HOURS = 24;
 const ONLINE_WINDOW_SECONDS = 120;
@@ -1720,17 +1725,46 @@ function revokeRememberTokens(PDO $pdo, int $userId): void
     }
 }
 
+function currentRememberSelector(): string
+{
+    // "Beni hatırla" çerezinin seçici yarısı: bu isteği yapan cihazı diğer
+    // cihazlardan ayıran tek kimlik. Biçim tutmazsa boş döner.
+    $raw = (string) ($_COOKIE[REMEMBER_COOKIE_NAME] ?? '');
+    return preg_match('/\A([a-f0-9]{32}):[a-f0-9]{64}\z/', $raw, $matches) ? $matches[1] : '';
+}
+
 function forgetCurrentRememberToken(PDO $pdo): void
 {
-    $raw = (string) ($_COOKIE[REMEMBER_COOKIE_NAME] ?? '');
-    if (preg_match('/\A([a-f0-9]{32}):[a-f0-9]{64}\z/', $raw, $matches)) {
+    $selector = currentRememberSelector();
+    if ($selector !== '') {
         try {
-            $pdo->prepare('DELETE FROM auth_remember_tokens WHERE selector = ?')->execute([$matches[1]]);
+            $pdo->prepare('DELETE FROM auth_remember_tokens WHERE selector = ?')->execute([$selector]);
         } catch (Throwable $error) {
             error_log('[remember] forget skipped: ' . $error->getMessage());
         }
     }
     clearRememberCookie();
+}
+
+function revokeOtherRememberTokens(PDO $pdo, int $userId, int $keepVersion): void
+{
+    // Şifre değişince hesabın DİĞER cihazlarındaki "beni hatırla" anahtarları
+    // düşer. Bu isteği yapan cihazın anahtarı yeni oturum sürümüne taşınır;
+    // aksi halde restoreSessionFromRemember sürüm uyuşmazlığı görüp kendi
+    // şifresini değiştiren kullanıcıyı da oturumdan atardı.
+    $selector = currentRememberSelector();
+    try {
+        if ($selector === '') {
+            $pdo->prepare('DELETE FROM auth_remember_tokens WHERE user_id = ?')->execute([$userId]);
+            return;
+        }
+        $pdo->prepare('DELETE FROM auth_remember_tokens WHERE user_id = ? AND selector <> ?')
+            ->execute([$userId, $selector]);
+        $pdo->prepare('UPDATE auth_remember_tokens SET session_version = ? WHERE user_id = ? AND selector = ?')
+            ->execute([$keepVersion, $userId, $selector]);
+    } catch (Throwable $error) {
+        error_log('[remember] partial revoke skipped: ' . $error->getMessage());
+    }
 }
 
 function restoreSessionFromRemember(PDO $pdo): void
@@ -3368,7 +3402,7 @@ function actionGetRooms(PDO $pdo): never
          LEFT JOIN room_reads rr ON rr.room_id = r.id AND rr.user_id = ?
          LEFT JOIN messages m ON m.room_id = r.id
             AND m.deleted_at IS NULL
-            AND m.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 24 HOUR)
+            AND m.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)
             AND m.id > COALESCE(rr.last_read_message_id, 0)
             AND (
                 (m.user_id IS NOT NULL AND m.user_id <> ?)
@@ -3410,7 +3444,7 @@ function actionGetMessages(PDO $pdo): never
              SELECT m.id, ?, UTC_TIMESTAMP() FROM messages m
              WHERE m.room_id = ? AND m.user_id IS NOT NULL AND m.user_id <> ?
                AND m.deleted_at IS NULL
-               AND m.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 24 HOUR)
+               AND m.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)
                AND m.id > COALESCE((SELECT rr.last_read_message_id FROM room_reads rr WHERE rr.user_id = ? AND rr.room_id = ?), 0)'
         );
         $views->execute([$user['id'], $roomId, $user['id'], $user['id'], $roomId]);
@@ -3425,7 +3459,7 @@ function actionGetMessages(PDO $pdo): never
             LEFT JOIN users u ON u.id = m.user_id
             LEFT JOIN message_deletions md ON md.message_id = m.id AND md.user_id = ? AND md.deleted_for_user = 1
             WHERE m.room_id = ? AND m.deleted_at IS NULL
-              AND m.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 24 HOUR) AND md.id IS NULL
+              AND m.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR) AND md.id IS NULL
             ORDER BY m.id DESC LIMIT 100
          ) AS recent ORDER BY recent.id ASC'
     );
@@ -3461,7 +3495,7 @@ function actionGetMessages(PDO $pdo): never
     $nextCleanup = null;
     if ((string) ($_GET['meta'] ?? '0') === '1') {
         $cleanupStmt = $pdo->prepare(
-            'SELECT MIN(created_at) FROM messages WHERE room_id = ? AND deleted_at IS NULL AND created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL 24 HOUR)'
+            'SELECT MIN(created_at) FROM messages WHERE room_id = ? AND deleted_at IS NULL AND created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)'
         );
         $cleanupStmt->execute([$roomId]);
         $oldestCreatedAt = $cleanupStmt->fetchColumn();
@@ -3753,6 +3787,63 @@ function actionUpdateSettings(PDO $pdo, array $data): never
         'show_read_receipts' => $readReceipts,
         'show_last_seen' => $lastSeen,
     ]]);
+}
+
+function actionChangePassword(PDO $pdo, array $data): never
+{
+    $user = requireUser($pdo);
+    // Güncel şifre burada deneme-yanılmayla tahmin edilebilir. Koruma, giriş
+    // ucundakiyle BİREBİR aynı politikadır: yalnızca HATALI güncel şifre
+    // sayılır (5 deneme / 15 dk), başarılı değişim sayacı sıfırlar.
+    // consumeRequestLimit kullanılmazdı çünkü o BAŞARILI istekleri de sayar;
+    // şifresini iki kez üst üste değiştiren ya da yeni şifre kuralına
+    // takılan meşru kullanıcı kendi hesabından kilitlenirdi.
+    $rateLimitKey = rateKey('change_password', (string) $user['id']);
+    assertNotRateLimited($pdo, $rateLimitKey);
+
+    $current = is_string($data['current_password'] ?? null) ? $data['current_password'] : '';
+    // Yeni şifre, kayıt akışıyla BİREBİR aynı kurallardan geçer: iki alanın
+    // eşleşmesi, 10-128 karakter, boşluk yok, harf + rakam + özel karakter.
+    // Ucuz biçim denetimi, pahalı hash doğrulamasından ÖNCE yapılır
+    // (delete_own_account ile aynı sıra): kurala takılan istek için boşuna
+    // Argon2id maliyeti ödenmez.
+    $new = validatePassword($data['password'] ?? null, $data['password_confirm'] ?? null);
+
+    // Güncel şifre boş ya da saklanan hash biçimsiz olsa bile doğrulama
+    // çalıştırılır: erken dönüş, yanıt süresi farkından hesabın şifre
+    // durumunu sızdırırdı.
+    $storedHash = (string) ($user['password_hash'] ?? '');
+    if ($storedHash === '') {
+        $storedHash = '$2y$10$usesomesillystringfore7hnbRJHxXVLeakoG8K30oukPsA.ztMG';
+    }
+    if (!password_verify($current, $storedHash)) {
+        recordFailedAttempt($pdo, $rateLimitKey, 5, 900, 900);
+        throw new ApiError(401, 'INVALID_CREDENTIALS', 'Güncel şifre hatalı.');
+    }
+    if (hash_equals($new, $current)) {
+        throw new ApiError(422, 'SAME_PASSWORD', 'Yeni şifre güncel şifreden farklı olmalıdır.');
+    }
+
+    $hash = password_hash($new, passwordAlgorithm());
+    if ($hash === false) {
+        throw new RuntimeException('Şifre güvenli biçimde işlenemedi.');
+    }
+    $userId = (int) $user['id'];
+    $newVersion = (int) ($user['session_version'] ?? 1) + 1;
+    $pdo->prepare('UPDATE users SET password_hash = ?, session_version = ? WHERE id = ?')
+        ->execute([$hash, $newVersion, $userId]);
+
+    // Sürüm yükseltmesi diğer oturumları düşürür. Bu isteğin sahibi bilinçli
+    // olarak yeni sürüme taşınır: kendi şifresini değiştiren kullanıcı
+    // işlemin ortasında oturumdan atılmamalı.
+    $_SESSION['session_version'] = $newVersion;
+    revokeOtherRememberTokens($pdo, $userId, $newVersion);
+    clearRateLimit($pdo, $rateLimitKey);
+
+    respond([
+        'message' => 'Şifren değiştirildi. Diğer cihazlardaki oturumların kapatıldı.',
+        'other_sessions_revoked' => true,
+    ]);
 }
 
 function actionGetMyInviteCode(PDO $pdo): never
@@ -5055,6 +5146,7 @@ function actionHealth(): never
     );
     $report = [
         'ok' => true,
+        'build' => ASRA_BUILD,
         'php' => PHP_VERSION,
         'utc' => gmdate('c'),
         'db_host' => preg_match('/host=([^;]+)/', $dsn, $m) ? $m[1] : null,
@@ -5097,11 +5189,15 @@ function actionAdminPendingApprovals(PDO $pdo): never
     } catch (Throwable $error) {
         error_log('[approval] premature welcome cleanup skipped: ' . $error->getMessage());
     }
+    // Bekleyen HER hesap listede görünmelidir: nedeni henüz yazılmamış
+    // hesapları gizlemek, moderatörün karar verememesi demek (yeni kayıtlar
+    // "panele düşmüyor" şikâyetinin kökü buydu). Gönderilmiş başvurular önde,
+    // nedeni yazılmamışlar kayıt tarihine göre arkadan gelir.
     $stmt = $pdo->query(
         "SELECT id, username, approval_reason, approval_submitted_at, created_at
          FROM users
-         WHERE approval_status = 'pending' AND approval_submitted_at IS NOT NULL
-         ORDER BY approval_submitted_at ASC, id ASC
+         WHERE approval_status = 'pending'
+         ORDER BY (approval_submitted_at IS NOT NULL) DESC, approval_submitted_at ASC, created_at ASC, id ASC
          LIMIT 200"
     );
     $items = [];
@@ -5112,9 +5208,19 @@ function actionAdminPendingApprovals(PDO $pdo): never
             'reason' => repairLegacyTurkishText($row['approval_reason'] ?? '') ?: '',
             'submitted_at' => formatUtc($row['approval_submitted_at'] ?? null),
             'created_at' => formatUtc($row['created_at'] ?? null),
+            'submitted' => !empty($row['approval_submitted_at']),
         ];
     }
-    respond(['pending' => $items]);
+    // includes_unsubmitted: bu yanıtın nedeni yazılmamış bekleyen hesapları
+    // DA kapsadığını bildirir. Alan yoksa sunucuda eski auth.php vardır ve
+    // istemci moderatöre bunu açıkça söyler (sessiz boş liste bırakmaz).
+    respond([
+        'pending' => $items,
+        'total' => count($items),
+        'includes_unsubmitted' => true,
+        'limit' => 200,
+        'build' => ASRA_BUILD,
+    ]);
 }
 
 function actionAdminDecideApproval(PDO $pdo, array $data): never
@@ -5281,7 +5387,7 @@ function dispatch(): never
     $postActions = [
         'check_invite_code', 'register', 'login', 'submit_approval', 'logout', 'send_message', 'delete_message', 'undo_delete_message', 'finalize_message_delete',
         'update_profile', 'update_profile_photo', 'delete_profile_photo', 'update_settings', 'admin_login', 'admin_ban_user', 'admin_unban_user',
-        'admin_delete_user', 'admin_change_user_password', 'admin_decide_approval', 'admin_adjust_coins', 'admin_reset_invite_code', 'admin_set_access_code', 'admin_send_announcement', 'admin_delete_announcement', 'delete_own_account', 'ai_chat', 'buy_frame', 'equip_frame', 'claim_quest', 'claim_game_reward',
+        'admin_delete_user', 'admin_change_user_password', 'change_password', 'admin_decide_approval', 'admin_adjust_coins', 'admin_reset_invite_code', 'admin_set_access_code', 'admin_send_announcement', 'admin_delete_announcement', 'delete_own_account', 'ai_chat', 'buy_frame', 'equip_frame', 'claim_quest', 'claim_game_reward',
     ];
     $isPostAction = in_array($action, $postActions, true);
     requireMethod($isPostAction ? 'POST' : 'GET');
@@ -5357,6 +5463,7 @@ function dispatch(): never
         'update_profile_photo' => actionUpdateProfilePhoto($pdo),
         'delete_profile_photo' => actionDeleteProfilePhoto($pdo),
         'update_settings' => actionUpdateSettings($pdo, $data),
+        'change_password' => actionChangePassword($pdo, $data),
         'get_my_invite_code' => actionGetMyInviteCode($pdo),
         'get_media' => actionGetMedia($pdo),
         'media' => actionGetMedia($pdo),

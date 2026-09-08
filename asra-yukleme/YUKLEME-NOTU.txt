@@ -3,10 +3,10 @@ ASRA — YÜKLEME PAKETİ (v1.7.1 · asra.42web.io · yeni veritabanı)
 
 İÇERİK (3 dosya + APK)
 ----------------------
-  auth.php          256.153 bayt   sunucu API'si (yeni DB bilgileri İÇİNDE)
-                                   SHA-256: 1a17ff1db56452af8d93f11280dd2134678e5ba5d861f58731abb39f8af476dc
-  index.html        351.541 bayt   arayüz (CSS + JS + logo gömülü, tek dosya)
-                                   SHA-256: 0f5b74e5c95b52c8f163a8a1f6503d81ba272649d72d8a7c7c90371a6330267d
+  auth.php          261.749 bayt   sunucu API'si (yeni DB bilgileri İÇİNDE)
+                                   SHA-256: dad4ac59821ddd4fee32b4690e9678c91976863016e8066e43199355bccacfa0
+  index.html        404.729 bayt   arayüz (CSS + JS + logo gömülü, tek dosya)
+                                   SHA-256: e1ca0a0c7921b77532f7f3dfa3db9ac5fe09f4e66887df79aa19b0357a42ded6
   .htaccess           4.028 bayt   Apache başlıkları + gizli dosya engeli
   asra-1.7.1.apk    711.644 bayt   Android uygulaması (imzalı, v2+v3)
                                    SHA-256: 83443be4df59f8e1294a1567314c29c62eca715c4b67f8d5535754e3e6f4a34d
@@ -58,6 +58,8 @@ veri ve oda adların ezilmez.
 
 NE DEĞİŞTİ (önceki pakete göre)
 -------------------------------
+* YENİ: AYARLAR > GÜVENLİK — kullanıcı kendi şifresini değiştirebiliyor ve
+  "Şifremi unuttum" yetkiliye yönlendiriyor (ayrıntı aşağıda).
 * Veritabanı bağlantısı yeni hesaba geçirildi; parola koddan çıkarıldı.
 * Şema kendini kuruyor; SQL yüklemek gerekmiyor.
 * SIFIR-HIT BOŞTA DÜZENİ: periyodik get_messages YOK. Oda boşta dakikada
@@ -65,6 +67,83 @@ NE DEĞİŞTİ (önceki pakete göre)
   görünür; mesaj gönderildikten sonra 2 dakika boyunca 10 sn'de bir bakar.
 * Uygulama BİLDİRİM İZNİ İSTEMEZ. İzinler yalnızca: INTERNET,
   ACCESS_NETWORK_STATE, CAMERA, RECORD_AUDIO, MODIFY_AUDIO_SETTINGS.
+
+ŞİFRE DEĞİŞTİRME (Ayarlar > Güvenlik)
+-------------------------------------
+Kullanıcı yolu: Ayarlar ekranında yeni bir "Güvenlik" paneli var.
+
+  [Şifre Değiştir]  -> modal açılır:
+        Güncel şifre        (autocomplete=current-password)
+        Yeni şifre          (autocomplete=new-password)
+        Yeni şifre (tekrar) (autocomplete=new-password)
+        Her üçünde de Göster/Gizle düğmesi.
+        [Vazgeç]  [Kaydet]
+
+  [Şifremi unuttum] -> modal yalnızca mesaj gösterir, HİÇ istek atmaz:
+        "Şifreni unutman sorun değil: hesabın, mesajların ve tüm verilerin
+         yerinde duruyor, hiçbir şey silinmedi.
+
+         Yeni şifreni almak için yetkiliyle iletişime geçmen yeterli.
+         Kullanıcı adını belirt; hesabın doğrulandıktan sonra yetkili senin
+         için yeni bir şifre belirleyip sana iletir.
+
+         Şifre yenilemeyi bilerek yalnızca yetkili üzerinden yürütüyoruz.
+         Böylece tanımadığın birinin senin adına şifre belirlemesinin önüne
+         geçiliyor ve hesabın başkasının eline geçmiyor.
+
+         Yeni şifren belirlendiğinde açık oturumların güvenlik gereği
+         kapatılır. Giriş yaptıktan sonra şifreni Ayarlar > Güvenlik
+         bölümünden istediğin zaman kendin değiştirebilirsin."
+
+METNİN TONU (bilerek böyle, değiştirirken bozma)
+        Kullanıcıya "bu platformda e-posta doğrulaması yok" gibi bir EKSİKLİK
+        İTİRAFI sunulmaz; bu hem gereksiz hem platformu kötüleyen bir dildir.
+        Yetkilinin hangi paneli hangi düğmeyle kullandığı da kullanıcının işi
+        değildir, o yüzden "Admin Paneli'nden..." gibi iç işleyiş anlatılmaz.
+        Metin üç şeyi söyler: ne yapacak, bu neden böyle, sonrasında ne olacak.
+        Teknik gerçek geliştirici tarafında saklıdır: users tablosunda e-posta
+        kolonu yok, kendi kendine sıfırlama ucu hiç yok, tek yol yetkilidir.
+        _tests/password_change_browser_test.sh bu tonu OTOMATİK denetler
+        (olumsuz doğrulamalar: e-posta geçmemeli, "yapamazsın" dili olmamalı,
+        Admin Paneli anılmamalı; ayrıca >=4 paragraf ve >=400 karakter).
+
+DOĞRULAMA SIRASI (hepsi tutarsa değişir)
+  1. Yeni şifre kuralları — kayıt akışıyla BİREBİR aynı doğrulayıcı
+     (validatePassword) kullanılır, ikinci bir kural küresi YOKTUR:
+       iki alan eşleşmeli, 10-128 karakter, boşluk yok,
+       en az bir harf + bir rakam + bir özel karakter.
+     Bu denetim hem tarayıcıda (istek atılmadan, anında) hem sunucuda yapılır.
+  2. Güncel şifre — password_verify ile saklanan hash'e karşı doğrulanır.
+  3. Yeni şifre güncel şifreden FARKLI olmalı (422 SAME_PASSWORD).
+  Ucuz biçim denetimi pahalı hash doğrulamasından ÖNCE çalışır; kurala takılan
+  istek için boşuna Argon2id maliyeti ödenmez.
+
+DEĞİŞİM SONRASI OTURUM POLİTİKASI
+  session_version 1 artar. Sonuç:
+    - DİĞER cihazların oturumları ve "beni hatırla" anahtarları DÜŞER.
+    - Bu isteği yapan cihazın oturumu ve anahtarı KORUNUR: kendi şifresini
+      değiştiren kullanıcı işlemin ortasında dışarı atılmaz.
+  (Admin Paneli'nden yetkilinin yaptığı değişim eskisi gibi TÜM oturumları
+   düşürmeye devam eder; o davranış değişmedi.)
+
+KÖTÜYE KULLANIM KORUMASI
+  Giriş ucuyla birebir aynı politika: 5 hatalı deneme / 15 dk, sonra 429.
+    - Yalnızca HATALI GÜNCEL ŞİFRE sayılır. Yeni şifre kuralına takılan
+      denemeler bütçeyi TÜKETMEZ — aksi halde şifresini birkaç kez yanlış
+      yazan meşru kullanıcı kendi hesabını kilitlerdi.
+    - Başarılı değişim sayacı SIFIRLAR.
+    - Kilit KULLANICI bazlıdır, IP bazlı değil: ücretsiz paylaşımlı hosting'de
+      herkes aynı IP'den göründüğü için IP kilidi tüm topluluğu kilitlerdi.
+  Boş güncel şifre ya da biçimsiz saklanan hash için de doğrulama çalıştırılır;
+  erken dönüş yanıt süresinden hesap durumunu sızdırırdı.
+
+AYRICA GİDERİLEN ARAYÜZ KUSURU (bu özellikte ortaya çıktı)
+  Çift dokunuş kilidi (3 sn) yalnızca AĞ İSTEĞİ üreten eylemleri korumalıydı,
+  ama istemci tarafında reddedilen gönderimlerden sonra da sürüyordu: kullanıcı
+  zayıf şifreyi düzeltip tekrar bastığında dokunuşu 3 sn boyunca SESSİZCE
+  yutuluyor, form "bozuk" görünüyordu. Kilit artık isteğin ayakta olmadığı
+  durumlarda (istemci reddi + hata yanıtı) geri alınıyor: releaseActionLock().
+  Bu, geri butonunda daha önce giderilen aynı kusur sınıfıdır.
 
 HIT KOTASI (kademeli seyreltme ile %58-66 daha az)
 --------------------------------------------------
@@ -117,6 +196,49 @@ Onarım:
     (önceden 90 sn). Boşta kullanıcı 1 istek/dk harcadığı için normal
     kullanımda bu sınırlara hiç yaklaşılmaz.
 
+GERİ SAYIM / SAAT SİSTEMİ ONARILDI
+----------------------------------
+Belirti: oda ekranındaki "Duyurular dâhil 24 saat sonra temizlenir · …"
+satırı sürekli "hesaplanıyor…"da takılı kalıyor, süre hiç hesaplanmıyordu.
+
+Kök nedenler ve onarımlar:
+  1) SIFIR-İSTEK ODA GİRİŞİ: önbellek dolu + okunmamış rozeti 0 olan odaya
+     girerken sunucuya HİÇ istek gitmez. Geri sayımı türetip ekrana yazan tek
+     yer get_messages yanıtı olduğu için sayaç, arayüz çizilirken yazılan
+     "hesaplanıyor…" yer tutucusunda KALICI olarak takılı kalıyordu.
+     -> Vade artık oda girişinde yerel önbellekten, İSTEK ATMADAN türetilir;
+        sıfır-istek tasarımı aynen korunur (test: yeniden girişte 0 istek).
+  2) HAYALET MESAJLAR: yerel önbellek günlerce eski satırları tutuyordu.
+     Sunucu o mesajları saklama süresi dolunca siler ve listeye koymaz; ama
+     rozet 0 ise istek de atılmadığı için bu mesajlar ekranda görünüyor ve
+     sayaç bayat damgadan geçmiş bir vadeye kilitleniyordu.
+     -> Önbellek okunurken saklama süresi dolmuş (veya damgası bozuk) satırlar
+        elenir ve önbellek kalıcı olarak temizlenir.
+  3) VADESİ GEÇEN SAYAÇ: süre bitince metin "temizleniyor…"a düşüyor ve bir
+     daha hiç türetilmediği için orada kilitleniyordu.
+     -> Bayat vade düşülüp kalan mesajlardan yeniden türetilir; geçerli mesaj
+        yoksa dürüst durum ("oda boş · ilk mesajdan sonra başlar") yazılır.
+  4) TEK KAYNAK: auth.php içinde saklama penceresi 4 sorguda elle "INTERVAL 24
+     HOUR" yazılıydı; MESSAGE_RETENTION_HOURS sabitiyle bağı kopmuştu.
+     -> Hepsi sabite bağlandı (sabit değişirse sorgular da birlikte değişir).
+  5) NaN KORUMASI: bozuk/0 saklama süresi ekranda "NaN saat" üretebiliyordu.
+     -> retentionHoursValue() + applyRetentionHours() ile doğrulanır.
+
+AYRICA ONARILAN İKİ ARAYÜZ KUSURU
+---------------------------------
+  • GERİ BUTONU 3 SANİYE ÖLÜYDÜ: çift dokunuş koruması geri butonunu 3 sn
+    kilitliyordu; buton statik bir öğe olduğu için kilit ekran değişiminde de
+    yaşıyordu. Odaya girip 3 sn içinde geri basınca dokunuş SESSİZCE
+    yutuluyor, kullanıcı odada takılı kalıyordu. Geri/marka butonları hiçbir
+    ağ isteği üretmediği ve renderHome() yinelemeye dayanıklı olduğu için
+    (ölçüldü: 5x tıklama -> 0 ek istek) bu ikisi kilidin dışında tutuldu.
+  • GÖNDERİM COOLDOWN'U SESSİZCE YUTUYORDU: 5 sn'lik kilit, gönderim anındaki
+    buton düğümüne bağlıydı ve ekran değişiminde temizlenmiyordu. 5 sn dolmadan
+    başka odaya geçince yeni odanın butonu SERBEST görünürken gönderimler hiçbir
+    uyarı olmadan yok sayılıyordu. Kilit artık bir ZAMAN DAMGASINA bağlı, her
+    composer çiziminde yeni butona taşınıyor ve guard bayraktan değil damgadan
+    okunuyor.
+
 SİTE AÇILMIYORSA: TANI UCUNU KULLAN
 -----------------------------------
 Tarayıcıdan şu adresi aç:
@@ -138,10 +260,44 @@ DİKKAT
 * user_push_tokens / push_events / user_push_topics tabloları varsa
   dokunulmaz; sunucu artık okumaz da yazmaz da.
 
+ONAY KUYRUĞU (v31)
+------------------
+* Bekleyen HER hesap "Onaylanmayı Bekleyenler" listesinde görünür: katılma
+  nedenini henüz yazmamış olanlar dâhil (eskiden yalnızca nedeni yazılmış
+  olanlar listeleniyor, yeni kayıtlar panele "düşmüyor" gibi görünüyordu).
+* Nedeni yazılmamış satırda kayıt tarihi ve "katılma nedeni henüz yazılmadı"
+  notu gösterilir; gönderilmiş başvurular listenin başında durur.
+* Geçmişten kalan bekleyen hesaplar için ek işlem gerekmez: liste artık
+  doğrudan users tablosundaki approval_status='pending' durumunu gösterir.
+* Sekmenin üstünde "Herkesi Gör / Yenile" düğmesi ve sayaç satırı vardır
+  (kaç bekleyen var, kaçının nedeni yazılmış, son yenileme saati). Liste
+  sekme açılınca da kendiliğinden dolu gelir.
+* Düğme artık tıklamayı yutmaz: 3 saniyelik nazik eylem kilidi bu salt-okunur
+  düğmede devre dışıdır; istek uçuştayken basılırsa yenileme sıraya alınır.
+* Elle yenileme, arka plan yoklamalarının biriktirdiği hız-sınırı beklemesine
+  takılmaz (priority).
+* ÖNEMLİ: index.html ve auth.php İKİSİ BİRDEN yüklenmelidir. Sunucudaki
+  auth.php eski kalırsa nedeni yazılmamış bekleyenler sunucu tarafında
+  filtrelenir; bu durumda panel artık sessiz kalmaz ve hangi dosyanın
+  yükleneceğini söyleyen kırmızı uyarı gösterir.
+* Yüklü sürüm doğrulaması: tarayıcıda  https://SİTENİZ/auth.php?action=health
+  açın; "build":"v31" görünmelidir.
+
+DİL DESTEĞİ (v29)
+-----------------
+* Arayüz dili: Türkçe + İngilizce. Ayarlar > Dil'den seçilir ve giriş
+  kapısı, başlık, menü, sohbet, profiller, mağaza, modallar, doğrulama
+  mesajları ve sunucu hata mesajları dâhil tüm üye yolculuğunda anında
+  uygulanır. Seçim çıkışta da hatırlanır (giriş ekranı çevrili açılır).
+* Türkçe varsayılandır ve metinleri birebir korunmuştur.
+* Bilinçli kapsam: admin paneli, Asra AI içeriği, oda kataloğunun tohum
+  adları/açıklamaları ve görev/oyun metinleri çevrilmez; bu yüzeylerde
+  Türkçe kalması beklenen davranıştır.
+
 DOĞRULAMA
 ---------
-Tam test koşusu: ✓215 / ✗0
-  bash /home/user/.setup/run-tests.sh /home/user/projects/ASRA-fcm <etiket>
+Tam test koşusu: ✓545 / ✗0
+  bash .setup/run-tests.sh <proje-kökü> <etiket>
 Buna "boş veritabanı" testi de dâhil: 0 tablolu bir veritabanına yalnızca
 bağlanıp şemanın ve 20 odanın kendiliğinden oluştuğunu,
 kayıt→giriş→oda→mesaj akışının çalıştığını kanıtlar (17 kontrol).

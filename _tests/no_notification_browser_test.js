@@ -247,8 +247,21 @@ const HOOK = () => {
     await sleep(1000);
     const gm = apiRequests.filter((r) => r.action === 'get_messages').length;
     if (gm > 0) {
-      const shown = await page.evaluate((mk) => document.body.innerText.indexOf(mk) >= 0, marker);
-      detected = { getMessages: gm, shown: shown, reqs: apiRequests.slice() };
+      // YARIŞ DÜZELTMESİ: puppeteer'ın 'request' olayı isteğin GÖNDERİLDİĞİ
+      // anda tetiklenir; yanıtın işlenip satırın çizilmesi ise biraz sonra
+      // olur. Eski sürüm tam o anda TEK örneklem aldığı için suite, yanıt
+      // henüz çizilmediyse "mesaj ekranda çizilmedi" diye YANLIŞ yere
+      // kalıyordu (orijinal kodda bile 3 koşuda 2 kez). İstek sayısı ve giden
+      // istek listesi TESPİT ANINDA dondurulur (dedektörün tek istek attığı
+      // iddiası gevşemez), çizim ise kısa bir süre boyunca beklenir.
+      detected = { getMessages: gm, reqs: apiRequests.slice(), shown: false };
+      for (let k = 0; k < 30; k += 1) {
+        if (await page.evaluate((mk) => document.body.innerText.indexOf(mk) >= 0, marker)) {
+          detected.shown = true;
+          break;
+        }
+        await sleep(200);
+      }
       break;
     }
   }
