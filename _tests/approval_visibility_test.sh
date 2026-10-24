@@ -77,8 +77,6 @@ register_pending() { # <ad> <jar>
   local N=$1 J=$2; rm -f "$J"
   api_get "$J" "appr-$N/1.0" "" "$TDIR/s.json" session >/dev/null
   local T; T=$(tok "$TDIR/s.json" "")
-  api_post "$J" "appr-$N/1.0" "$T" check_invite_code '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$TDIR/i.json" >/dev/null
-  T=$(tok "$TDIR/i.json" "$T")
   api_post "$J" "appr-$N/1.0" "$T" register "$(jbody username="$N" password='Test123!xyz' password_confirm='Test123!xyz')" "$TDIR/reg_$N.json" >/dev/null
   jget "$TDIR/reg_$N.json" '$.ok'
 }
@@ -93,8 +91,6 @@ echo "== 2) API: bekleyen HER hesap listede =="
 JADM="$TDIR/jadm.txt"; rm -f "$JADM"
 api_get "$JADM" "appr-admin/1.0" "" "$TDIR/as.json" session >/dev/null
 AT=$(tok "$TDIR/as.json" "")
-api_post "$JADM" "appr-admin/1.0" "$AT" check_invite_code '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$TDIR/ai.json" >/dev/null
-AT=$(tok "$TDIR/ai.json" "$AT")
 api_post "$JADM" "appr-admin/1.0" "$AT" login "$(jbody username=uiadmin password='Test123!xyz')" "$TDIR/al.json" >/dev/null
 AT=$(tok "$TDIR/al.json" "$AT")
 api_post "$JADM" "appr-admin/1.0" "$AT" admin_login "$(jbody password="$ADMIN_PW")" "$TDIR/aad.json" >/dev/null
@@ -110,17 +106,15 @@ check_eq "yazılmamışta submitted_at null" "None" "$(jget "$TDIR/p1.json" '$.p
 check_eq "yazılmamışta created_at dolu" "True" "$(python3 -c "import json;print(bool(json.load(open('$TDIR/p1.json'))['pending'][1]['created_at']))")"
 check_eq "yanıt includes_unsubmitted=True (yeni sorgu)" "True" "$(jget "$TDIR/p1.json" '$.includes_unsubmitted')"
 check_eq "yanıt total=2" "2" "$(jget "$TDIR/p1.json" '$.total')"
-check_eq "yanıt build=v31" "v31" "$(jget "$TDIR/p1.json" '$.build')"
+check_eq "yanıt build=v34" "v34" "$(jget "$TDIR/p1.json" '$.build')"
 curl -s -m 5 "$BASE?action=health" -o "$TDIR/h.json"
-check_eq "health ucu sunucu sürümünü bildirir (v31)" "v31" "$(jget "$TDIR/h.json" '$.build')"
+check_eq "health ucu sunucu sürümünü bildirir (v34)" "v34" "$(jget "$TDIR/h.json" '$.build')"
 
 echo "== 3) API: admin olmayan erişemez =="
 # uiadmin oturumu admin dogrulamasi YAPMADIGI icin 403 beklenir.
 JNO="$TDIR/jno.txt"; rm -f "$JNO"
 api_get "$JNO" "appr-noadmin/1.0" "" "$TDIR/ns.json" session >/dev/null
 NT=$(tok "$TDIR/ns.json" "")
-api_post "$JNO" "appr-noadmin/1.0" "$NT" check_invite_code '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$TDIR/ni.json" >/dev/null
-NT=$(tok "$TDIR/ni.json" "$NT")
 api_post "$JNO" "appr-noadmin/1.0" "$NT" login "$(jbody username=uiadmin password='Test123!xyz')" "$TDIR/nl.json" >/dev/null
 NT=$(tok "$TDIR/nl.json" "$NT")
 CODE=$(api_get "$JNO" "appr-noadmin/1.0" "$NT" "$TDIR/np.json" admin_pending_approvals)

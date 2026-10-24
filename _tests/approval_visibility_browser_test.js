@@ -24,7 +24,6 @@ const puppeteer = require('puppeteer-core');
 const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium';
 const ORIGIN = process.env.ORIGIN || 'http://127.0.0.1:8102';
 const TDIR = process.argv[2] || '/tmp';
-const INVITE_CODE = process.env.INVITE_CODE || 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
 const USERNAME = process.env.TEST_USER || 'uiadmin';
 const PASSWORD = process.env.TEST_PASSWORD || 'Test123!xyz';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
@@ -55,7 +54,7 @@ async function loadApp(page, tries = 8) {
     // kodunda 'SERVICE_BUSY' dizgesi geçer; bu yüzden yalnızca uygulamanın
     // kendi kabuğu yok VE sunucunun ham JSON <pre> çıktısı görünüyorsa meşgul say.
     const busy = await page.evaluate(() => {
-      if (document.querySelector('#invite-form') || document.querySelector('#login-form') || document.querySelector('#app-shell')) return false;
+      if (document.querySelector('#login-form') || document.querySelector('#app-shell')) return false;
       const pre = document.body ? document.body.querySelector('pre') : null;
       return Boolean(pre && /SERVICE_BUSY/.test(pre.textContent || ''));
     }).catch(() => false);
@@ -109,15 +108,8 @@ async function until(page, fn, arg, tries = 40, step = 250) {
   try {
     console.log('== A) Admin paneli gerçek kullanıcı yoluyla açılır ==');
     check(await loadApp(page), 'sayfa yüklendi (sunucu hız sınırı yok)');
-    await page.evaluate((code) => {
-      const i = document.querySelector('#invite-form input[name="code"]');
-      if (!i) return;
-      i.value = code;
-      i.dispatchEvent(new Event('input', { bubbles: true }));
-      document.querySelector('#invite-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    }, INVITE_CODE);
     await page.waitForSelector('#login-username', { timeout: 20000 }).catch(() => {});
-    await sleep(3400);
+    await sleep(1000);
     const loginReady = await page.evaluate(() => Boolean(document.querySelector('#login-username') && document.querySelector('#login-password')));
     check(loginReady, 'giriş ekranı hazır');
     if (!loginReady) throw new Error('giriş ekranı gelmedi: ' + await page.evaluate(() => (document.body.textContent || '').slice(0, 160)).catch(() => '?'));

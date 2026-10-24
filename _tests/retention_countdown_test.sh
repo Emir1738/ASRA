@@ -39,7 +39,7 @@ UID_ADMIN=$(sudo mysql -N asra_test -e "SELECT id FROM users WHERE username='uia
 [ -n "$UID_ADMIN" ] && ok "referans kullanıcı hazır (id=$UID_ADMIN)" || bad "referans kullanıcı bulunamadı"
 
 ROOMS_TOTAL=$(sudo mysql -N asra_test -e "SELECT COUNT(*) FROM rooms")
-LIVE_ROOM_ID=$(sudo mysql -N asra_test -e "SELECT id FROM rooms ORDER BY id LIMIT 1")
+LIVE_ROOM_ID=$(sudo mysql -N asra_test -e "SELECT id FROM rooms WHERE id > 0 ORDER BY id LIMIT 1")
 STALE_ROOM_ID=$(sudo mysql -N asra_test -e "SELECT id FROM rooms ORDER BY id DESC LIMIT 1")
 [ "$ROOMS_TOTAL" -ge 2 ] && ok "katalog hazır: $ROOMS_TOTAL oda (canlı=$LIVE_ROOM_ID, ikinci=$STALE_ROOM_ID)" \
   || bad "en az 2 oda gerek, bulunan: $ROOMS_TOTAL"

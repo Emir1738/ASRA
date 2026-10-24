@@ -29,7 +29,7 @@ export ASRA_HOT_READS_PER_MIN=60
 # Koşu ortasında "php: command not found" yerine baştan kurulur.
 if ! command -v php >/dev/null 2>&1 || ! command -v chromium >/dev/null 2>&1; then
   echo "ortam eksik (php/chromium) -> install-testenv.sh çalıştırılıyor"
-  sudo -n bash /home/user/.setup/install-testenv.sh >/tmp/install-testenv.log 2>&1
+  sudo -n bash "$ROOT/.setup/install-testenv.sh" >/tmp/install-testenv.log 2>&1
 fi
 if ! pgrep -x mariadbd >/dev/null 2>&1; then
   echo "mariadb çalışmıyor -> elle başlatılıyor"
@@ -43,9 +43,9 @@ if [ ! -d /home/user/.asra-tests/node_modules/puppeteer-core ]; then
   ( cd /home/user/.asra-tests && npm install puppeteer-core@24 jsdom --no-audit --no-fund >/tmp/npm-asra-tests.log 2>&1 )
 fi
 # APK derin denetimi (aapt2/dexdump) araç zinciri gerektirir.
-if [ ! -x /home/user/.asra-build/android-sdk/build-tools/34.0.0/aapt2 ]; then
+if [ ! -x "${ANDROID_SDK_ROOT:-/home/user/.asra-build/android-sdk}/build-tools/34.0.0/aapt2" ]; then
   echo "Android build-tools eksik -> install-toolchain.sh çalıştırılıyor"
-  bash /home/user/.setup/install-toolchain.sh >/tmp/install-toolchain.log 2>&1
+  bash "$ROOT/.setup/install-toolchain.sh" >/tmp/install-toolchain.log 2>&1
 fi
 echo "php=$(command -v php)  chromium=$(command -v chromium)  node_modul=$([ -d /home/user/.asra-tests/node_modules/puppeteer-core ] && echo var || echo yok)"
 
@@ -112,6 +112,8 @@ run() {
 }
 
 run "csp_hash_check"     bash _tests/csp_hash_check.sh "$ROOT/asra-site-fix/index.html"
+run "apk_release"        bash _tests/apk_release_test.sh
+run "apk_webview_logic"  node _tests/apk_webview_logic_test.js
 run "no_notification"    bash _tests/no_notification_test.sh
 run "fresh_db_test"      bash _tests/fresh_db_test.sh
 run "throttle_release"   bash _tests/throttle_release_test.sh
@@ -125,6 +127,7 @@ run "retention_countdown" bash _tests/retention_countdown_test.sh
 run "password_change"    bash _tests/password_change_test.sh
 run "i18n"               bash _tests/i18n_test.sh
 run "approval_visibility" bash _tests/approval_visibility_test.sh
+run "info_room_test"      bash _tests/info_room_test.sh
 
 kill $PHP_PID 2>/dev/null
 echo "############ $LABEL ÖZET: ✓$TOTAL_PASS  ✗$TOTAL_FAIL ############"

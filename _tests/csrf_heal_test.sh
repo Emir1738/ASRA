@@ -2,7 +2,7 @@
 # ============================================================================
 #  Oturum kaybı + CSRF 419 kendini-onarma testi (kullanıcının prod senaryosu)
 #  Senaryo: host, sunucu oturum dosyasını sildi (kilit/GC). Kullanıcı açık
-#  sayfada davet kodunu girer -> ilk POST 419 CSRF_FAILED -> istemci yeni
+#  sayfada bir işlem yapar -> ilk POST 419 CSRF_FAILED -> istemci yeni
 #  token + yeni cookie ile otomatik tekrarlar -> BAŞARILI.
 # ============================================================================
 set -u
@@ -17,19 +17,18 @@ ok()  { PASS=$((PASS+1)); echo "  ✓ $1"; }
 bad() { FAIL=$((FAIL+1)); echo "  ✗ $1"; }
 sql() { sudo mysql -N asra_test -e "$1"; }
 
-# Kullanıcı hazırla (davet + kayıt + onay + giriş)
+# Kullanıcı hazırla (kayıt + onay + giriş)
 curl -s -c "$T/jar.txt" "$BASE?action=session" -o /dev/null
 CSRF=$(curl -s -b "$T/jar.txt" -c "$T/jar.txt" "$BASE?action=session" | python3 -c "import json,sys;print(json.load(sys.stdin)['csrf_token'])")
 post() { curl -s -b "$T/jar.txt" -c "$T/jar.txt" -H "X-CSRF-Token: $1" -H "Content-Type: application/json" -d "$2" "$BASE?action=$3"; }
-post "$CSRF" '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' check_invite_code > /dev/null
 post "$CSRF" '{"username":"csrfheal1","password":"Test123!xyz","password_confirm":"Test123!xyz"}' register > /dev/null
 sql "UPDATE users SET approval_status='approved' WHERE username='csrfheal1'"
 post "$CSRF" '{"username":"csrfheal1","password":"Test123!xyz"}' login > /dev/null
 
-echo "== 1) Sağlıklı oturumla davet kontrolü (referans) =="
+echo "== 1) Sağlıklı oturumla giriş (referans) =="
 curl -s -c "$T/jar.txt" "$BASE?action=session" -o /dev/null
 CSRF=$(curl -s -b "$T/jar.txt" -c "$T/jar.txt" "$BASE?action=session" | python3 -c "import json,sys;print(json.load(sys.stdin)['csrf_token'])")
-R=$(post "$CSRF" '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' check_invite_code)
+R=$(post "$CSRF" '{"username":"csrfheal1","password":"Test123!xyz"}' login)
 echo "$R" | grep -q '"ok":true' && ok "sağlıklı oturumda istek geçiyor" || bad "referans istek geçmedi: $R"
 
 echo "== 2) HOST SENARYOSU: sunucu oturum dosyaları silindi =="
@@ -40,8 +39,8 @@ OLD_JAR="$T/jar.txt"
 cp "$OLD_JAR" "$T/old_jar.txt"
 OLD_CSRF="$CSRF"
 
-echo "== 3) Kullanıcı davet kodunu gönderiyor (eski cookie + eski token) =="
-RESP1=$(curl -s -D "$T/h1.txt" -b "$T/old_jar.txt" -o "$T/r1.json" -w '%{http_code}' -H "X-CSRF-Token: $OLD_CSRF" -H "Content-Type: application/json" -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$BASE?action=check_invite_code")
+echo "== 3) Kullanıcı giriş yapıyor (eski cookie + eski token) =="
+RESP1=$(curl -s -D "$T/h1.txt" -b "$T/old_jar.txt" -o "$T/r1.json" -w '%{http_code}' -H "X-CSRF-Token: $OLD_CSRF" -H "Content-Type: application/json" -d '{"username":"csrfheal1","password":"Test123!xyz"}' "$BASE?action=login")
 CODE1=$(python3 -c "import json;print(json.load(open('$T/r1.json')).get('error',{}).get('code',''))")
 [ "$RESP1" = "419" ] && [ "$CODE1" = "CSRF_FAILED" ] && ok "ilk istek 419 CSRF_FAILED (beklenen)" || bad "ilk istek beklenmedik: HTTP $RESP1 code=$CODE1"
 
@@ -63,9 +62,9 @@ if m:
     kept.append("127.0.0.1\tFALSE\t/\tFALSE\t0\t%s\t%s" % (name, val))
     open(sys.argv[2], 'w').write('\n'.join(kept) + '\n')
 EOF
-RESP2=$(curl -s -b "$T/old_jar.txt" -c "$T/old_jar.txt" -o "$T/r2.json" -w '%{http_code}' -H "X-CSRF-Token: $NEW_CSRF" -H "Content-Type: application/json" -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$BASE?action=check_invite_code")
+RESP2=$(curl -s -b "$T/old_jar.txt" -c "$T/old_jar.txt" -o "$T/r2.json" -w '%{http_code}' -H "X-CSRF-Token: $NEW_CSRF" -H "Content-Type: application/json" -d '{"username":"csrfheal1","password":"Test123!xyz"}' "$BASE?action=login")
 OK2=$(python3 -c "import json;print(json.load(open('$T/r2.json')).get('ok',''))")
-[ "$RESP2" = "200" ] && [ "$OK2" = "True" ] && ok "tekrar deneme BAŞARILI — davet kodu doğrulandı (kullanıcı fark etmez)" || bad "tekrar başarısız: HTTP $RESP2 $(head -c 150 $T/r2.json)"
+[ "$RESP2" = "200" ] && [ "$OK2" = "True" ] && ok "tekrar deneme BAŞARILI — oturum onarıldı (kullanıcı fark etmez)" || bad "tekrar başarısız: HTTP $RESP2 $(head -c 150 $T/r2.json)"
 
 echo
 echo "SONUÇ: GEÇTİ $PASS / BAŞARISIZ $FAIL"

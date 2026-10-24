@@ -2,10 +2,9 @@
 # ============================================================================
 #  ASRA E2E Test v2 — BASH/CLI
 #  Kapsam:
-#   - davet/kayıt/giriş akışı
-#   - ERIŞİM KODU: açıkken sınırsız giriş (2 farklı cihaz + 2 farklı kayıt),
-#     kapatınca kod ölür, tekrar açılınca YENİ kod üretilir
-#   - HİT KORUMASI HER ZAMAN AÇIK: kod açık da kapalı da bütçe 60/dk (testte)
+#   - açık kayıt/giriş akışı (davet kodu yok; yeni kayıt onay bekler)
+#   - onay sistemi: kayıt pending olur, admin onayı sonrası tam erişim
+#   - HİT KORUMASI HER ZAMAN AÇIK: bütçe 60/dk (testte)
 #   - hatırla-token ile oturum kurtarma (güncelleme senaryosu)
 #   - 12-aylık inaktiflik penceresi, CSRF koruması
 # ============================================================================
@@ -38,13 +37,13 @@ if v is None: print('null')
 else: print(v if not isinstance(v,(dict,list)) else json.dumps(v))" "$1" "$2"; }
 
 get_cookie() { awk -v name="$2" '$6==name {print $7}' "$1" | tail -1; }
-sql() { sudo mysql -N asra_test -e "$1"; }
+sql() { sudo mysql -N --default-character-set=utf8mb4 asra_test -e "$1"; }
 
-echo "== 0) Test izolasyonu: ortam sıfırdan kurulur =="
+echo "== 1) Test izolasyonu: ortam sıfırdan kurulur =="
 bash "$SDIR/reset_env.sh"
 sql "SELECT 1" > /dev/null && ok "veritabanı sıfırdan kuruldu" || bad "veritabanı kurulamadı"
 
-echo "== 1) Önyükleme (session bootstrap) =="
+echo "== 2) Önyükleme (session bootstrap) =="
 curl -s -c "$TDIR/jar_main.txt" "$BASE?action=session" -o "$TDIR/r.json"
 check_eq "session ok=True" "True" "$(python3 -c "import json;print(json.load(open('$TDIR/r.json')).get('ok'))")"
 CSRF=$(jget "$TDIR/r.json" '$.csrf_token')
@@ -54,13 +53,10 @@ post() { # JAR CSRF AKSİYON JSON -> r.json
   curl -s -b "$1" -c "$1" -H "X-CSRF-Token: $2" -H "Content-Type: application/json" \
     -d "$4" "$BASE?action=$3" -o "$TDIR/r.json"; }
 
-echo "== 2) Yanlış davet kodu reddedilir =="
-post "$TDIR/jar_main.txt" "$CSRF" check_invite_code '{"code":"YANLISKOD123"}'
-check_eq "INVALID_INVITE" "INVALID_INVITE" "$(jget "$TDIR/r.json" '$.error.code')"
-
-echo "== 3) Kalıcı davet kodu kabul edilir =="
-post "$TDIR/jar_main.txt" "$CSRF" check_invite_code '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}'
-check_eq "davet doğrulandı ok=True" "True" "$(jget "$TDIR/r.json" '$.ok')"
+echo "== 3) Davet kodu ucu kaldırıldı (ölü uç) =="
+C2=$(curl -s -o "$TDIR/r.json" -w '%{http_code}' -b "$TDIR/jar_main.txt" "$BASE?action=check_invite_code")
+check_eq "check_invite_code ölü (404)" "404" "$C2"
+check_eq "hata kodu ACTION_NOT_FOUND" "ACTION_NOT_FOUND" "$(jget "$TDIR/r.json" '$.error.code')"
 
 echo "== 4) Kayıt (onay bekleyen) =="
 post "$TDIR/jar_main.txt" "$CSRF" register '{"username":"testuser1","password":"Test123!xyz","password_confirm":"Test123!xyz"}'
@@ -91,48 +87,28 @@ echo "== 7) Yetkili girişi =="
 post "$TDIR/jar_main.txt" "$CSRF" admin_login '{"password":"AsraAsraJshe+sbuwnduxmsgdnfusmg"}'
 check_eq "admin ok" "True" "$(jget "$TDIR/r.json" '$.ok')"
 
-echo "== 8) Kod bölümü başlangıç durumu (kapalı, kod yok) =="
-curl -s -b "$TDIR/jar_main.txt" "$BASE?action=admin_access_code_status" -o "$TDIR/r.json"
-check_eq "başlangıç kapalı" "False" "$(jget "$TDIR/r.json" '$.enabled')"
-check_eq "başlangıçta kod gösterilmez" "" "$(jget "$TDIR/r.json" '$.code')"
-
-echo "== 9) KOD AÇILIYOR — otomatik YENİ kod üretilir =="
-post "$TDIR/jar_main.txt" "$CSRF" admin_set_access_code '{"enabled":true}'
-check_eq "açma ok" "True" "$(jget "$TDIR/r.json" '$.ok')"
-CODE1=$(jget "$TDIR/r.json" '$.code')
-check_eq "durum açık" "True" "$(curl -s -b "$TDIR/jar_main.txt" "$BASE?action=admin_access_code_status" | python3 -c "import json,sys;print(json.load(sys.stdin)['enabled'])")"
-python3 -c "import re,sys; sys.exit(0 if re.fullmatch(r'[A-Z2-9]{4}(-[A-Z2-9]{4}){3}', sys.argv[1]) else 1)" "$CODE1" \
-  && ok "kod karışık biçiminde: $CODE1" || bad "kod biçimi hatalı: $CODE1"
-curl -s -b "$TDIR/jar_main.txt" "$BASE?action=session" -o "$TDIR/r.json"
-check_eq "session hit_economy=true (kalıcı)" "True" "$(jget "$TDIR/r.json" '$.hit_economy')"
-
-echo "== 10) KODLA SINIRSIZ ERİŞİM: 2 farklı cihaz + 2 farklı kayıt =="
-# Cihaz A
+echo "== 8) AÇIK KAYIT: davet kodu GEREKMEZ (2 farklı cihaz + 2 farklı kayıt) =="
+# Cihaz A — doğrudan kayıt (kod doğrulama yok)
 rm -f "$TDIR/jar_a.txt"
 curl -s -A "E2E-DevA/1.0" -c "$TDIR/jar_a.txt" "$BASE?action=session" -o "$TDIR/r.json"
 CSRA=$(jget "$TDIR/r.json" '$.csrf_token')
-curl -s -A "E2E-DevA/1.0" -b "$TDIR/jar_a.txt" -c "$TDIR/jar_a.txt" -H "X-CSRF-Token: $CSRA" -H "Content-Type: application/json" -d "{\"code\":\"$CODE1\"}" "$BASE?action=check_invite_code" -o "$TDIR/r.json"
-check_eq "cihaz A: kodla doğrulama" "True" "$(jget "$TDIR/r.json" '$.ok')"
 curl -s -A "E2E-DevA/1.0" -b "$TDIR/jar_a.txt" -c "$TDIR/jar_a.txt" -H "X-CSRF-Token: $CSRA" -H "Content-Type: application/json" -d '{"username":"openuser_a","password":"Test123!xyz","password_confirm":"Test123!xyz"}' "$BASE?action=register" -o "$TDIR/r.json"
-check_eq "cihaz A: kayıt BAŞARILI (limit yok)" "True" "$(jget "$TDIR/r.json" '$.approval_required')"
+check_eq "cihaz A: kod OLMADAN kayıt başarılı (onay bekliyor)" "True" "$(jget "$TDIR/r.json" '$.approval_required')"
 sql "UPDATE users SET approval_status='approved' WHERE username='openuser_a'" > /dev/null
-# Cihaz B — AYNI KODU KULLANIR
+# Cihaz B — aynı şekilde doğrudan kayıt
 rm -f "$TDIR/jar_b.txt"
 curl -s -A "E2E-DevB/1.0" -c "$TDIR/jar_b.txt" "$BASE?action=session" -o "$TDIR/r.json"
 CSRB=$(jget "$TDIR/r.json" '$.csrf_token')
-curl -s -A "E2E-DevB/1.0" -b "$TDIR/jar_b.txt" -c "$TDIR/jar_b.txt" -H "X-CSRF-Token: $CSRB" -H "Content-Type: application/json" -d "{\"code\":\"$CODE1\"}" "$BASE?action=check_invite_code" -o "$TDIR/r.json"
-check_eq "cihaz B: AYNI kodla doğrulama (tüketilmedi)" "True" "$(jget "$TDIR/r.json" '$.ok')"
 curl -s -A "E2E-DevB/1.0" -b "$TDIR/jar_b.txt" -c "$TDIR/jar_b.txt" -H "X-CSRF-Token: $CSRB" -H "Content-Type: application/json" -d '{"username":"openuser_b","password":"Test123!xyz","password_confirm":"Test123!xyz"}' "$BASE?action=register" -o "$TDIR/r.json"
-check_eq "cihaz B: kayıt BAŞARILI (hakkı tüketilmedi)" "True" "$(jget "$TDIR/r.json" '$.approval_required')"
+check_eq "cihaz B: kod OLMADAN kayıt başarılı (onay bekliyor)" "True" "$(jget "$TDIR/r.json" '$.approval_required')"
 sql "UPDATE users SET approval_status='approved' WHERE username='openuser_b'" > /dev/null
 
-echo "== 10b) KÖK TEST: FARKLI KİŞİLER BİRBİRİYLE EŞLEŞMESİN (ortak UA/dil) =="
+echo "== 9) KÖK TEST: FARKLI KİŞİLER BİRBİRİYLE EŞLEŞMESİN (ortak UA/dil) =="
 # Kişi 1 ve Kişi 2 AYNI tarayıcı/model/dil (birebir aynı UA) ama FARKLI insanlar
 # (farklı tarayıcı profili = farklı ASRA_DEVICE token'ı).
 rm -f "$TDIR/jar_p1.txt" "$TDIR/jar_p2.txt"
 curl -s -A "E2E-SameBrowser/1.0" -c "$TDIR/jar_p1.txt" "$BASE?action=session" -o "$TDIR/r.json"
 CSR1=$(jget "$TDIR/r.json" '$.csrf_token')
-curl -s -A "E2E-SameBrowser/1.0" -b "$TDIR/jar_p1.txt" -c "$TDIR/jar_p1.txt" -H "X-CSRF-Token: $CSR1" -H "Content-Type: application/json" -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$BASE?action=check_invite_code" -o "$TDIR/r.json"
 curl -s -A "E2E-SameBrowser/1.0" -b "$TDIR/jar_p1.txt" -c "$TDIR/jar_p1.txt" -H "X-CSRF-Token: $CSR1" -H "Content-Type: application/json" -d '{"username":"person1","password":"Test123!xyz","password_confirm":"Test123!xyz"}' "$BASE?action=register" -o "$TDIR/r.json"
 sql "UPDATE users SET approval_status='approved' WHERE username='person1'" > /dev/null
 # Girişte uygulama cihaz kimliği de gönderilir -> token + app hash bağlanır
@@ -143,8 +119,6 @@ curl -s -A "E2E-SameBrowser/1.0" -c "$TDIR/jar_p2.txt" "$BASE?action=session" -o
 CSR2=$(jget "$TDIR/r.json" '$.csrf_token')
 check_eq "KİŞİ 2: başkasının hesabıyla EŞLEŞMEZ (has_account=false)" "False" "$(jget "$TDIR/r.json" '$.device_has_account')"
 check_eq "KİŞİ 2: bound_username boş" "null" "$(jget "$TDIR/r.json" '$.bound_username')"
-curl -s -A "E2E-SameBrowser/1.0" -b "$TDIR/jar_p2.txt" -c "$TDIR/jar_p2.txt" -H "X-CSRF-Token: $CSR2" -H "Content-Type: application/json" -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$BASE?action=check_invite_code" -o "$TDIR/r.json"
-check_eq "KİŞİ 2: davet doğrulaması (kendine has kimlik)" "True" "$(jget "$TDIR/r.json" '$.ok')"
 curl -s -A "E2E-SameBrowser/1.0" -b "$TDIR/jar_p2.txt" -c "$TDIR/jar_p2.txt" -H "X-CSRF-Token: $CSR2" -H "Content-Type: application/json" -d '{"username":"person2","password":"Test123!xyz","password_confirm":"Test123!xyz"}' "$BASE?action=register" -o "$TDIR/r.json"
 check_eq "KİŞİ 2: kayıt ENGELLENMEDİ (cihaz çakışması yok)" "True" "$(jget "$TDIR/r.json" '$.approval_required')"
 sql "UPDATE users SET approval_status='approved' WHERE username='person2'" > /dev/null
@@ -163,12 +137,11 @@ printf '127.0.0.1\tFALSE\t/\tFALSE\t0\tASRA_REMEMBER\t%s\n' "$REMEMBER_P1" > "$T
 curl -s -A "E2E-SameBrowser/1.0" -b "$TDIR/jar_p4.txt" -c "$TDIR/jar_p4.txt" "$BASE?action=session" -o "$TDIR/r.json"
 check_eq "fingerprint tek başına güven VERMEZ (geri yükleme yok)" "False" "$(jget "$TDIR/r.json" '$.authenticated')"
 
-echo "== 10c) RED BLOK TAŞMASI YOK: blok yalnızca kişinin kendisini etkiler =="
+echo "== 10) RED BLOK TAŞMASI YOK: blok yalnızca kişinin kendisini etkiler =="
 sql "DELETE FROM rate_limits WHERE rate_key LIKE 'register:%'" > /dev/null
 rm -f "$TDIR/jar_rej.txt"
 curl -s -A "E2E-Rej/1.0" -c "$TDIR/jar_rej.txt" "$BASE?action=session" -o "$TDIR/r.json"
 CSRJ=$(jget "$TDIR/r.json" '$.csrf_token')
-curl -s -A "E2E-Rej/1.0" -b "$TDIR/jar_rej.txt" -c "$TDIR/jar_rej.txt" -H "X-CSRF-Token: $CSRJ" -H "Content-Type: application/json" -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$BASE?action=check_invite_code" -o "$TDIR/r.json"
 curl -s -A "E2E-Rej/1.0" -b "$TDIR/jar_rej.txt" -c "$TDIR/jar_rej.txt" -H "X-CSRF-Token: $CSRJ" -H "Content-Type: application/json" -d '{"username":"rejuser","password":"Test123!xyz","password_confirm":"Test123!xyz"}' "$BASE?action=register" -o "$TDIR/r.json"
 check_eq "rejuser kaydı (pending)" "True" "$(jget "$TDIR/r.json" '$.approval_required')"
 IDREJ=$(sql "SELECT id FROM users WHERE username='rejuser'")
@@ -193,7 +166,6 @@ sql "DELETE FROM rate_limits WHERE rate_key LIKE 'register:%'" > /dev/null
 rm -f "$TDIR/jar_rej3.txt"
 curl -s -A "E2E-Rej3/9.9" -c "$TDIR/jar_rej3.txt" "$BASE?action=session" -o "$TDIR/r.json"
 CSRJ3=$(jget "$TDIR/r.json" '$.csrf_token')
-curl -s -A "E2E-Rej3/9.9" -b "$TDIR/jar_rej3.txt" -c "$TDIR/jar_rej3.txt" -H "X-CSRF-Token: $CSRJ3" -H "Content-Type: application/json" -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$BASE?action=check_invite_code" -o "$TDIR/r.json"
 curl -s -A "E2E-Rej3/9.9" -b "$TDIR/jar_rej3.txt" -c "$TDIR/jar_rej3.txt" -H "X-CSRF-Token: $CSRJ3" -H "Content-Type: application/json" -d '{"username":"rejuser","password":"Test123!xyz","password_confirm":"Test123!xyz"}' "$BASE?action=register" -o "$TDIR/r.json"
 check_eq "aynı kullanıcı adı yeni tarayıcıda serinlemede" "APPROVAL_COOLDOWN" "$(jget "$TDIR/r.json" '$.error.code')"
 # Farklı kişi + farklı kullanıcı adı + aynı UA -> kayıt serbest
@@ -201,7 +173,6 @@ sql "DELETE FROM rate_limits WHERE rate_key LIKE 'register:%'" > /dev/null
 rm -f "$TDIR/jar_rej4.txt"
 curl -s -A "E2E-Rej/1.0" -c "$TDIR/jar_rej4.txt" "$BASE?action=session" -o "$TDIR/r.json"
 CSRJ4=$(jget "$TDIR/r.json" '$.csrf_token')
-curl -s -A "E2E-Rej/1.0" -b "$TDIR/jar_rej4.txt" -c "$TDIR/jar_rej4.txt" -H "X-CSRF-Token: $CSRJ4" -H "Content-Type: application/json" -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$BASE?action=check_invite_code" -o "$TDIR/r.json"
 curl -s -A "E2E-Rej/1.0" -b "$TDIR/jar_rej4.txt" -c "$TDIR/jar_rej4.txt" -H "X-CSRF-Token: $CSRJ4" -H "Content-Type: application/json" -d '{"username":"rejuser_other","password":"Test123!xyz","password_confirm":"Test123!xyz"}' "$BASE?action=register" -o "$TDIR/r.json"
 check_eq "farklı kişi + farklı ad (aynı UA) kayıt SERBEST" "True" "$(jget "$TDIR/r.json" '$.approval_required')"
 sql "UPDATE users SET approval_status='approved' WHERE username='rejuser_other'" > /dev/null
@@ -220,7 +191,7 @@ for i in 2 3 4 5; do
     -d "{\"username\":\"hammer$i\",\"password\":\"Test123!xyz\"}" "$BASE?action=login" -o "$TDIR/r.json"
   [ "$(jget "$TDIR/r.json" '$.ok')" = "True" ] || bad "hammer$i girişi başarısız"
 done
-ok "4 test kullanıcısı hazır (kod AÇIK durumda)"
+ok "4 test kullanıcısı hazır (onaylı)"
 
 count_host_limits() {
   local total=0 j n code
@@ -237,31 +208,13 @@ count_host_limits() {
 
 sql "DELETE FROM rate_limits WHERE rate_key LIKE 'global_read:%'" > /dev/null
 ON_HITS=$(count_host_limits "$TDIR/jar_h2.txt" "$TDIR/jar_h3.txt" "$TDIR/jar_h4.txt" "$TDIR/jar_h5.txt")
-[ "$ON_HITS" -ge 1 ] && ok "kod AÇIK: 80 istekte $ON_HITS host-limit (koruma aktif)" || bad "kod AÇIK: koruma tetiklenmedi"
-
-# Kod KAPATILSA BİLE koruma devam eder
-post "$TDIR/jar_main.txt" "$CSRF" admin_set_access_code '{"enabled":false}'
-sql "DELETE FROM rate_limits WHERE rate_key LIKE 'global_read:%'" > /dev/null
-OFF_HITS=$(count_host_limits "$TDIR/jar_h2.txt" "$TDIR/jar_h3.txt" "$TDIR/jar_h4.txt" "$TDIR/jar_h5.txt")
-[ "$OFF_HITS" -ge 1 ] && ok "kod KAPALI: 80 istekte $OFF_HITS host-limit (koruma Hâlâ aktif — kalıcı)" || bad "kod KAPALI: koruma tetiklenmedi"
-# 90sn'lik soğuma süresi "geçmiş" sayılır (sayaç temizliği)
+[ "$ON_HITS" -ge 1 ] && ok "80 istekte $ON_HITS host-limit (koruma her zaman aktif)" || bad "koruma tetiklenmedi"
+# hit_economy bayrağı her zaman true
 sql "DELETE FROM rate_limits WHERE rate_key LIKE 'global_read:%'" > /dev/null
 sleep 1
-check_eq "kapatınca hit_economy bayrağı hâlâ true" "True" "$(curl -s -b "$TDIR/jar_main.txt" "$BASE?action=session" | python3 -c "import json,sys;print(json.load(sys.stdin)['hit_economy'])")"
+check_eq "hit_economy bayrağı her zaman true" "True" "$(curl -s -b "$TDIR/jar_main.txt" "$BASE?action=session" | python3 -c "import json,sys;print(json.load(sys.stdin)['hit_economy'])")"
 
-echo "== 12) KOD KAPATILINCA KOD ÖLÜR, AÇILINCA YENİ KOD =="
-OLD_CODE="$CODE1"
-curl -s -A "E2E-DevC/1.0" -c "$TDIR/jar_c.txt" "$BASE?action=session" -o "$TDIR/r.json"
-CSRC=$(jget "$TDIR/r.json" '$.csrf_token')
-curl -s -A "E2E-DevC/1.0" -b "$TDIR/jar_c.txt" -c "$TDIR/jar_c.txt" -H "X-CSRF-Token: $CSRC" -H "Content-Type: application/json" -d "{\"code\":\"$OLD_CODE\"}" "$BASE?action=check_invite_code" -o "$TDIR/r.json"
-check_eq "kapatılmış eski kod REDDEDİLİR" "INVALID_INVITE" "$(jget "$TDIR/r.json" '$.error.code')"
-post "$TDIR/jar_main.txt" "$CSRF" admin_set_access_code '{"enabled":true}'
-CODE2=$(jget "$TDIR/r.json" '$.code')
-[ "$CODE2" != "$OLD_CODE" ] && [ -n "$CODE2" ] && ok "tekrar açılışta YENİ kod üretildi: $OLD_CODE -> $CODE2" || bad "yeni kod üretilmedi (eski: $OLD_CODE, yeni: $CODE2)"
-curl -s -A "E2E-DevC/1.0" -b "$TDIR/jar_c.txt" -c "$TDIR/jar_c.txt" -H "X-CSRF-Token: $CSRC" -H "Content-Type: application/json" -d "{\"code\":\"$CODE2\"}" "$BASE?action=check_invite_code" -o "$TDIR/r.json"
-check_eq "yeni kod ÇALIŞIYOR" "True" "$(jget "$TDIR/r.json" '$.ok')"
-
-echo "== 13) Uygulama güncellemesi simülasyonu: oturum dosyaları silindi =="
+echo "== 12) Uygulama güncellemesi simülasyonu: oturum dosyaları silindi =="
 sql "DELETE FROM rate_limits WHERE rate_key LIKE 'global_read:%'" > /dev/null
 find /tmp -maxdepth 1 -name 'sess_*' -delete 2>/dev/null
 sleep 1
@@ -276,7 +229,7 @@ CSRF=$(jget "$TDIR/r.json" '$.csrf_token')
 post "$TDIR/jar_main.txt" "$CSRF" admin_login '{"password":"AsraAsraJshe+sbuwnduxmsgdnfusmg"}' > /dev/null
 check_eq "kurtarma sonrası yetkili erişimi yeniden kuruldu" "True" "$(jget "$TDIR/r.json" '$.ok')"
 
-echo "== 14) Inaktiflik penceresi 12 ay =="
+echo "== 13) Inaktiflik penceresi 12 ay =="
 sql "INSERT INTO users (username, password_hash, avatar_color, approval_status, online_status, last_seen, created_at)
      VALUES ('purge_6m','x','c1','approved',0,DATE_SUB(UTC_TIMESTAMP(), INTERVAL 6 MONTH), DATE_SUB(UTC_TIMESTAMP(), INTERVAL 8 MONTH))" > /dev/null
 sql "INSERT INTO users (username, password_hash, avatar_color, approval_status, online_status, last_seen, created_at)
@@ -286,15 +239,9 @@ sql "INSERT INTO users (username, password_hash, avatar_color, approval_status, 
 check_eq "6 ay pasif hesap KORUNDU" "1" "$(sql "SELECT COUNT(*) FROM users WHERE username='purge_6m'")"
 check_eq "13 ay pasif hesap arındırıldı" "1" "$(sql "SELECT COUNT(*) FROM deleted_users_log WHERE username='purge_13m'")"
 
-echo "== 15) CSRF koruması (token'siz POST reddedilir) =="
-CSRC=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Content-Type: application/json" -d '{"enabled":false}' "$BASE?action=admin_set_access_code")
+echo "== 14) CSRF koruması (token'siz POST reddedilir) =="
+CSRC=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Content-Type: application/json" -d '{"username":"x","password":"y","password_confirm":"y"}' "$BASE?action=register")
 check_eq "token'siz POST 419 (CSRF_FAILED)" "419" "$CSRC"
-
-echo "== 16) Son durum: kod kapalı, kod değer yok =="
-post "$TDIR/jar_main.txt" "$CSRF" admin_set_access_code '{"enabled":false}'
-curl -s -b "$TDIR/jar_main.txt" "$BASE?action=admin_access_code_status" -o "$TDIR/r.json"
-check_eq "son durum kapalı" "False" "$(jget "$TDIR/r.json" '$.enabled')"
-check_eq "son durumda kod boş" "" "$(jget "$TDIR/r.json" '$.code')"
 
 echo
 echo "================ SONUÇ ================"

@@ -32,7 +32,6 @@ const puppeteer = require('puppeteer-core');
 const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium';
 const ORIGIN = process.env.ORIGIN || 'http://127.0.0.1:8095';
 const TDIR = process.argv[2] || '/tmp';
-const INVITE_CODE = process.env.INVITE_CODE || 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
 const USERNAME = process.env.TEST_USER || 'pwui';
 const OLD_PASSWORD = process.env.TEST_PASSWORD || 'Test123!xyz';
 const NEW_PASSWORD = process.env.NEW_PASSWORD || 'Arayuz123!xy';
@@ -57,14 +56,6 @@ async function until(page, fn, tries = 25, gap = 200) {
 async function login(page, password) {
   await page.goto(ORIGIN + '/', { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
   await sleep(1000);
-  await page.evaluate((code) => {
-    const i = document.querySelector('#invite-form input[name="code"]');
-    if (i) {
-      i.value = code;
-      i.dispatchEvent(new Event('input', { bubbles: true }));
-      document.querySelector('#invite-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    }
-  }, INVITE_CODE);
   await page.waitForSelector('#login-username', { timeout: 20000 }).catch(() => {});
   await page.evaluate((u, p) => {
     const un = document.querySelector('#login-username');

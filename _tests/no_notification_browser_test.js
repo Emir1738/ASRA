@@ -43,7 +43,6 @@ function makeSender() {
   sh(`rm -f '${jar}'`);
   sh(`curl -s -A '${ua}' -c '${jar}' '${BASE}?action=session' -o '${TDIR}/ps.json'`);
   const csrf = JSON.parse(sh(`cat '${TDIR}/ps.json'`)).csrf_token || '';
-  sh(`curl -s -A '${ua}' -b '${jar}' -c '${jar}' -H 'X-CSRF-Token: ${csrf}' -H 'Content-Type: application/json' -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' '${BASE}?action=check_invite_code' -o /dev/null`);
   sh(`curl -s -A '${ua}' -b '${jar}' -c '${jar}' -H 'X-CSRF-Token: ${csrf}' -H 'Content-Type: application/json' -d '{"username":"${SENDER}","password":"Test123!xyz","password_confirm":"Test123!xyz"}' '${BASE}?action=register' -o /dev/null`);
   sh(`sudo mysql -N asra_test -e "UPDATE users SET approval_status='approved' WHERE username='${SENDER}'" >/dev/null 2>&1`);
   sh(`curl -s -A '${ua}' -b '${jar}' -c '${jar}' -H 'X-CSRF-Token: ${csrf}' -H 'Content-Type: application/json' -d '{"username":"${SENDER}","password":"Test123!xyz"}' '${BASE}?action=login' -o /dev/null`);
@@ -143,14 +142,6 @@ const HOOK = () => {
   await sleep(1500);
 
   // Giriş (referans kullanıcı)
-  await page.evaluate(() => {
-    const i = document.querySelector('#invite-form input[name="code"]');
-    if (i) {
-      i.value = 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
-      i.dispatchEvent(new Event('input', { bubbles: true }));
-      document.querySelector('#invite-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    }
-  });
   await page.waitForSelector('#login-username', { timeout: 20000 }).catch(() => {});
   await page.evaluate(() => {
     const u = document.querySelector('#login-username');
@@ -177,7 +168,7 @@ const HOOK = () => {
 
   // Odaya gir (ilk kart). Oda daha önce hiç açılmadı -> tek istekle önbellek dolar.
   const roomId = await page.evaluate(() => {
-    const card = document.querySelector('.room-card');
+    const card = Array.from(document.querySelectorAll('.room-card')).find((el) => el.dataset.roomId !== '0');
     if (!card) return 0;
     const id = Number(card.dataset.roomId || 0);
     card.click();

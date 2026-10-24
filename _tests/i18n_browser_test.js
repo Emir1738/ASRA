@@ -36,7 +36,6 @@ const puppeteer = require('puppeteer-core');
 const CHROME = process.env.CHROME_PATH || '/usr/bin/chromium';
 const ORIGIN = process.env.ORIGIN || 'http://127.0.0.1:8097';
 const TDIR = process.argv[2] || '/tmp';
-const INVITE_CODE = process.env.INVITE_CODE || 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
 const USERNAME = process.env.TEST_USER || 'i18nui';
 const PASSWORD = process.env.TEST_PASSWORD || 'Test123!xyz';
 const SHOTS = process.env.SHOT_DIR || '';
@@ -114,8 +113,8 @@ function snapshotToasts(page) {
 /**
  * YENİ bir bildirimi bekler ve metnini döndürür.
  *
- * Sayı artışıyla beklemek YANLIŞ SONUÇ verir: davet doğrulama bildirimi 4,2 sn
- * yaşar, giriş isteği ise minLoadingMs=3000 nedeniyle ~3-4 sn sürer. Eski
+ * Sayı artışıyla beklemek YANLIŞ SONUÇ verir: giriş/kayıt bildirimleri birkaç
+ * saniye yaşar, giriş isteği ise minLoadingMs=3000 nedeniyle ~3-4 sn sürer. Eski
  * bildirim yenisi gelmeden söndüğü için sayı 1 -> 0 -> 1 olur ve "arttı"
  * koşulu hiç sağlanmaz. Bu yüzden metin KÜMESİ karşılaştırılır.
  */
@@ -146,20 +145,15 @@ function modalIsOpen(page) {
 async function freshAuthPage(page) {
   await page.goto(ORIGIN + '/', { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
   await sleep(1200);
-  await submitInvite(page);
+  await waitAuthReady(page);
 }
 
-async function submitInvite(page) {
-  await page.evaluate((code) => {
-    const input = document.querySelector('#invite-form input[name="code"]');
-    if (!input) return;
-    input.value = code;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    document.querySelector('#invite-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-  }, INVITE_CODE);
+async function waitAuthReady(page) {
   await page.waitForSelector('#login-username', { timeout: 20000 }).catch(() => {});
-  // Nazik eylem kilidi her gönderimde tüm formları 3 sn kilitler; beklemeden
-  // yapılan ikinci gönderim SESSİZCE yutulur ve test yanlış toast okur.
+  // Davet kapısı kaldırıldığı için giriş formu artık İLK EKRANDADIR; bu bekleme
+  // yalnızca önceki bir gönderimin (ör. çıkış) eylem kilidinin (3 sn) düşmesini
+  // sağlar. Kilidi beklemeden yapılan gönderim SESSİZCE yutulur, test yanlış
+  // toast okur.
   await sleep(3400);
 }
 
@@ -273,10 +267,8 @@ async function shot(page, name) {
     await page.goto(ORIGIN + '/', { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
     await sleep(1200);
     check(await page.evaluate(() => document.documentElement.lang) === 'tr', 'açılışta <html lang="tr">');
-    await assertTurkish(page, '#auth-screen', 'Davetiye kodu', 'giriş kapısı');
-    await assertTurkish(page, '#auth-screen', 'Doğrula', 'giriş kapısı düğmesi');
-
-    await submitInvite(page);
+    await assertTurkish(page, '#auth-screen', 'Topluluğa katılmak için', 'auth açıklaması (TR)');
+    await assertTurkish(page, '#auth-screen', 'Kaydol', 'kayıt sekmesi (TR)');
     await assertTurkish(page, '#auth-screen', 'Kullanıcı adı', 'giriş formu');
     await assertTurkish(page, '#auth-screen', 'Giriş Yap', 'giriş sekmesi');
     await shot(page, 'i18n-1-giris-tr');
@@ -398,8 +390,8 @@ async function shot(page, name) {
     await assertTurkish(page, '#auth-screen', 'Username', 'giriş formu etiketi (EN)');
     await shot(page, 'i18n-9-giris-en');
 
-    await assertNoTurkish(page, '#auth-screen', 'davet kapısı (EN)');
-    await submitInvite(page);
+    await assertNoTurkish(page, '#auth-screen', 'giriş ekranı (EN, yeniden)');
+    await waitAuthReady(page);
     const beforeEn = await snapshotToasts(page);
     await tryLogin(page, 'Yanlis123!sifre');
     const enToast = await waitForNewToast(page, beforeEn);

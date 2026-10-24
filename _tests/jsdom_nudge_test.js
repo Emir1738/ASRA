@@ -23,12 +23,6 @@ const UA_ARG = process.argv[2];
   });
   await page.goto('http://127.0.0.1:8090/', { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
   await new Promise((r) => setTimeout(r, 2500));
-  await page.evaluate(() => {
-    const i = document.querySelector('#invite-form input[name="code"]');
-    i.value = 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
-    i.dispatchEvent(new Event('input', { bubbles: true }));
-    document.querySelector('#invite-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-  });
   await page.waitForSelector('#login-username', { timeout: 20000 });
   await page.evaluate(() => {
     const u = document.querySelector('#login-username');

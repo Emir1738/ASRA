@@ -11,7 +11,7 @@
 #  Kanıtlananlar:
 #    1. Eski şemada (rooms.position yok) ilk istek 503 DEĞİL 200 döner
 #    2. Eksik sütun otomatik eklenir
-#    3. Katalog 20 odaya tamamlanır, mevcut odalar ezilmez
+#    3. Katalog 21 odaya tamamlanır (Bilgi Odası dahil), mevcut odalar ezilmez
 # ============================================================================
 set -uo pipefail
 SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -63,7 +63,7 @@ HASPOS=$(sql "SHOW COLUMNS FROM rooms LIKE 'position'")
 
 echo "== 3) Katalog tamamlandı, mevcut korunuyor =="
 ROOMS=$(sql "SELECT COUNT(*) FROM rooms")
-[ "$ROOMS" = "20" ] && ok "20 odaya tamamlandı" || bad "oda sayısı $ROOMS"
+[ "$ROOMS" = "21" ] && ok "21 odaya tamamlandı" || bad "oda sayısı $ROOMS"
 NAME1=$(sql "SELECT description FROM rooms WHERE id=1")
 [ "$NAME1" = "eski aciklama" ] && ok "mevcut oda ezilmedi (eski açıklama korundu)" || bad "mevcut oda ezildi: $NAME1"
 

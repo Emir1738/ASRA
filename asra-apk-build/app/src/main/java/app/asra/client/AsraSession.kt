@@ -8,48 +8,48 @@ import android.webkit.CookieManager
 object AsraSession {
     private const val PREFS = "asra_session"
     private const val KEY_COOKIE = "cookie"
-    private const val KEY_WATCH = "watch"
     private const val KEY_UA = "user_agent"
-    private const val KEY_MIGRATED = "migrated_de"
+    private const val KEY_MIGRATED_TO_CP = "migrated_to_credential_storage"
 
+    /** Eski sürümler çerezleri kilit ekranı açıkken bile erişilebilen DE alana
+     * yazıyordu. CP'de oturum varsa onu koru; yoksa DE kaydını taşı. DE
+     * kopyasını ancak başarılı, kalıcı yazımdan SONRA sil. */
+    @Synchronized
     fun prefs(context: Context): SharedPreferences {
         val app = context.applicationContext
-        val store = if (Build.VERSION.SDK_INT >= 24) {
-            app.createDeviceProtectedStorageContext()
-        } else {
-            app
+        val store = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (Build.VERSION.SDK_INT < 24) return store
+        val legacy = app.createDeviceProtectedStorageContext()
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!store.getBoolean(KEY_MIGRATED_TO_CP, false)) {
+            val oldCookie = legacy.getString(KEY_COOKIE, "").orEmpty()
+            val ownCookie = store.getString(KEY_COOKIE, "").orEmpty()
+            val latest = AsraSessionCookies.migrationCandidate(ownCookie, oldCookie)
+            val oldUa = legacy.getString(KEY_UA, "").orEmpty()
+            val ownUa = store.getString(KEY_UA, "").orEmpty()
+            val edit = store.edit().putBoolean(KEY_MIGRATED_TO_CP, true)
+            if (latest.isNotEmpty()) edit.putString(KEY_COOKIE, latest) else edit.remove(KEY_COOKIE)
+            val agent = ownUa.ifBlank { oldUa }
+            if (agent.isNotEmpty()) edit.putString(KEY_UA, agent)
+            if (!edit.commit()) return store // DE kaydı kaybolmamalı
         }
-        val dest = store.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (!dest.getBoolean(KEY_MIGRATED, false)) {
-            val src = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            dest.edit()
-                .putString(KEY_COOKIE, src.getString(KEY_COOKIE, dest.getString(KEY_COOKIE, "")).orEmpty())
-                .putBoolean(KEY_WATCH, src.getBoolean(KEY_WATCH, dest.getBoolean(KEY_WATCH, false)))
-                .putString(KEY_UA, src.getString(KEY_UA, dest.getString(KEY_UA, "")).orEmpty())
-                .putBoolean(KEY_MIGRATED, true)
-                .apply()
+        if (legacy.contains(KEY_COOKIE) || legacy.contains(KEY_UA) || legacy.contains("watch")) {
+            legacy.edit().remove(KEY_COOKIE).remove(KEY_UA).remove("watch")
+                .remove("migrated_de").commit()
         }
-        return dest
+        return store
     }
 
-    /**
-     * Uygulama güncellemesi, WebView yükseltmesi veya depolama temizliği
-     * WebView çerez deposunu sildiğinde kullanıcı hesabından düşerdi: kayıtlı
-     * ASRA_SID / ASRA_REMEMBER çerezleri yalnızca arka plan hatlarında kullanılır,
-     * WebView'e geri enjekte edilmezdi. Bu fonksiyon kayıtlı çerezleri yeniden
-     * WebView'e yazar; sunucu hatırla-token ile oturumu sessizce geri yükler,
-     * davetiye kodu tekrar istenmez.
-     *
-     * Canlı çerez deposunda geçerli oturum varsa hiçbir şeye dokunulmaz.
-     */
+    /** WebView deposu silindiğinde hatırla belirtecini AYRI bir çerez olarak
+     * geri kur. Mevcut canlı oturum varsa başka kullanıcının kaydını ezme. */
     fun restoreToWebView(context: Context) {
         try {
             val manager = CookieManager.getInstance()
-            val live = manager.getCookie(AsraIdentity.SITE_ORIGIN).orEmpty()
-            if (hasSession(live)) return
+            if (AsraSessionCookies.hasSession(manager.getCookie(AsraIdentity.SITE_ORIGIN).orEmpty())) return
             val saved = prefs(context).getString(KEY_COOKIE, "").orEmpty()
-            if (!hasSession(saved)) return
-            manager.setCookie(AsraIdentity.SITE_ORIGIN, saved)
+            val headers = AsraSessionCookies.restoreHeaders(saved)
+            if (headers.isEmpty()) return
+            headers.forEach { manager.setCookie(AsraIdentity.SITE_ORIGIN, it) }
             manager.flush()
         } catch (_: Exception) {
         }
@@ -58,54 +58,35 @@ object AsraSession {
     fun persist(context: Context) {
         val store = prefs(context)
         val live = try {
-            CookieManager.getInstance().getCookie(AsraIdentity.SITE_ORIGIN).orEmpty()
+            AsraSessionCookies.header(CookieManager.getInstance().getCookie(AsraIdentity.SITE_ORIGIN).orEmpty())
         } catch (_: Exception) {
-            ""
+            // WebView okunamadıysa kayıtlı oturumu SİLME.
+            return
         }
         val saved = store.getString(KEY_COOKIE, "").orEmpty()
-        val editor = store.edit()
-        if (hasSession(live)) {
-            editor.putString(KEY_COOKIE, live)
-            editor.putBoolean(KEY_WATCH, true)
-        } else if (hasSession(saved)) {
-            editor.putBoolean(KEY_WATCH, true)
-        }
-        editor.apply()
+        if (saved == live) return
+        if (live.isEmpty()) store.edit().remove(KEY_COOKIE).apply()
+        else store.edit().putString(KEY_COOKIE, live).apply()
     }
 
     fun rememberUserAgent(context: Context, userAgent: String) {
-        if (userAgent.isNotBlank()) {
-            prefs(context).edit().putString(KEY_UA, userAgent).apply()
-        }
+        if (userAgent.isNotBlank()) prefs(context).edit().putString(KEY_UA, userAgent).apply()
     }
 
     fun userAgent(context: Context): String {
         val saved = prefs(context).getString(KEY_UA, "").orEmpty()
-        return saved.ifBlank { "AsraApp/1.5.7" }
+        return AsraUserAgent.current(saved, BuildConfig.VERSION_NAME)
     }
 
     fun cookie(context: Context): String {
         val live = try {
-            CookieManager.getInstance().getCookie(AsraIdentity.SITE_ORIGIN)
+            AsraSessionCookies.header(CookieManager.getInstance().getCookie(AsraIdentity.SITE_ORIGIN).orEmpty())
         } catch (_: Exception) {
-            null
+            ""
         }
-        if (!live.isNullOrBlank() && hasSession(live)) return live
-        return prefs(context).getString(KEY_COOKIE, "").orEmpty()
+        if (live.isNotEmpty()) return live
+        return AsraSessionCookies.header(prefs(context).getString(KEY_COOKIE, "").orEmpty())
     }
 
-    fun shouldWatch(context: Context): Boolean {
-        val store = prefs(context)
-        if (store.getBoolean(KEY_WATCH, false)) return true
-        return hasSession(cookie(context))
-    }
-
-    fun setWatch(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(KEY_WATCH, enabled).apply()
-        if (enabled) persist(context)
-    }
-
-    fun hasSession(cookieHeader: String): Boolean {
-        return cookieHeader.contains("ASRA_SID=") || cookieHeader.contains("ASRA_REMEMBER=")
-    }
+    fun hasSession(cookieHeader: String): Boolean = AsraSessionCookies.hasSession(cookieHeader)
 }

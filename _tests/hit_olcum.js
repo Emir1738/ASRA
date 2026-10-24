@@ -1,7 +1,7 @@
 // ============================================================================
 //  Gerçek hit ölçümü (puppeteer + Chromium + gerçek PHP/MySQL sunucusu)
 //
-//  Kullanıcı davet koduyla girer, odaya girer ve ekrana DOKUNMADAN bekler.
+//  Kullanıcı giriş yapar, odaya girer ve ekrana DOKUNMADAN bekler.
 //  Bu süre boyunca sunucuya giden TÜM auth.php istekleri tarayıcı düzeyinde
 //  sayılır (fetch/XHR fark etmez). Zamanlayıcılar GERÇEK hızında çalışır;
 //  hiçbir hızlandırma uygulanmaz — ölçülen sayı üretimdeki sayıdır.
@@ -46,14 +46,6 @@ function tally(label, reqs, seconds) {
 
   await page.goto(ORIGIN + '/', { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
   await sleep(1200);
-  await page.evaluate(() => {
-    const i = document.querySelector('#invite-form input[name="code"]');
-    if (i) {
-      i.value = 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
-      i.dispatchEvent(new Event('input', { bubbles: true }));
-      document.querySelector('#invite-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    }
-  });
   await page.waitForSelector('#login-username', { timeout: 20000 }).catch(() => {});
   await page.evaluate(() => {
     const u = document.querySelector('#login-username');
@@ -66,7 +58,7 @@ function tally(label, reqs, seconds) {
   await sleep(2000);
 
   // Odaya gir, önbellek dolsun (bu giriş isteği ölçüme DAHİL DEĞİL).
-  await page.evaluate(() => { const c = document.querySelector('.room-card'); if (c) c.click(); });
+  await page.evaluate(() => { const c = Array.from(document.querySelectorAll('.room-card')).find((el) => el.dataset.roomId !== '0'); if (c) c.click(); });
   await sleep(3000);
 
   // ---- 1) ODA BOŞTA ----
@@ -93,7 +85,7 @@ function tally(label, reqs, seconds) {
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  await page.evaluate(() => { const c = document.querySelector('.room-card'); if (c) c.click(); });
+  await page.evaluate(() => { const c = Array.from(document.querySelectorAll('.room-card')).find((el) => el.dataset.roomId !== '0'); if (c) c.click(); });
   await sleep(2000);
   reqs.length = 0; recording = true;
   const t2 = Date.now();

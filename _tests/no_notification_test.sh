@@ -18,7 +18,7 @@ BASE="http://127.0.0.1:8090/auth.php"
 SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SDIR/.." && pwd)"
 SITE="$ROOT/asra-site-fix"
-APK="$ROOT/asra-apk-build/asra-1.7.1.apk"
+APK="$ROOT/asra-apk-build/asra-1.7.3.apk"
 BT="${ANDROID_SDK_ROOT:-/home/user/.asra-build/android-sdk}/build-tools/34.0.0"
 TDIR="$SDIR/run_nonotif"
 rm -rf "$TDIR"; mkdir -p "$TDIR"
@@ -90,7 +90,7 @@ expect_absent "AndroidManifest.xml: POST_NOTIFICATIONS yok" "$ROOT/asra-apk-buil
 expect_absent "AndroidManifest.xml: boot/alarm/ön plan servis izni yok" "$ROOT/asra-apk-build/app/src/main/AndroidManifest.xml" 'RECEIVE_BOOT_COMPLETED|SCHEDULE_EXACT_ALARM|USE_EXACT_ALARM|FOREGROUND_SERVICE|WAKE_LOCK|VIBRATE'
 if [ -f "$APK" ] && [ -x "$BT/aapt2" ]; then
   BADGE=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-  echo "$BADGE" | grep -q "versionName='1.7.1'" && ok "APK: versionName 1.7.1" || bad "APK: versionName 1.7.1 değil"
+  echo "$BADGE" | grep -q "versionName='1.7.3'" && ok "APK: versionName 1.7.3" || bad "APK: versionName 1.7.3 değil"
   if echo "$BADGE" | grep -q 'POST_NOTIFICATIONS'; then bad "APK: POST_NOTIFICATIONS izni duruyor"; else ok "APK: bildirim izni YOK"; fi
   PERMS=$(echo "$BADGE" | grep -c '^uses-permission' || true)
   check_eq "APK: izin sayısı 5 (INTERNET, ACCESS_NETWORK_STATE, CAMERA, RECORD_AUDIO, MODIFY_AUDIO_SETTINGS)" "5" "$PERMS"
@@ -124,8 +124,6 @@ post() { curl -s -o "$TDIR/r.json" -w '%{http_code}' -A "$UA" -b "$JAR" -c "$JAR
 get()  { curl -s -o "$TDIR/r.json" -w '%{http_code}' -A "$UA" -b "$JAR" -c "$JAR" "$BASE?action=$1"; }
 
 curl -s -A "$UA" -b "$JAR" -c "$JAR" -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
-  -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$BASE?action=check_invite_code" -o "$TDIR/r.json" >/dev/null
-curl -s -A "$UA" -b "$JAR" -c "$JAR" -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
   -d '{"username":"nonotif1","password":"Test123!xyz","password_confirm":"Test123!xyz"}' "$BASE?action=register" -o "$TDIR/r.json" >/dev/null
 sql "UPDATE users SET approval_status='approved' WHERE username='nonotif1'"
 CODE=$(curl -s -o "$TDIR/r.json" -w '%{http_code}' -A "$UA" -b "$JAR" -c "$JAR" -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
@@ -150,7 +148,7 @@ for act in register_push register_push_token poll_push; do
   check_eq "$act -> ACTION_NOT_FOUND" "ACTION_NOT_FOUND" "$ERR"
 done
 
-ROOM=$(sql "SELECT id FROM rooms ORDER BY id LIMIT 1")
+ROOM=$(sql "SELECT id FROM rooms WHERE id > 0 ORDER BY id LIMIT 1")
 [ -z "$ROOM" ] && ROOM=1
 CODE=$(get "get_rooms")
 check_eq "get_rooms 200 (bildirim altyapısı olmadan)" "200" "$CODE"

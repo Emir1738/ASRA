@@ -19,14 +19,14 @@ rm -f /tmp/asra_schema_v16.flag \
       /tmp/asra_schema_identity_v3.flag /tmp/asra_schema_platform_v1.flag
 
 sudo mysql -e "DROP DATABASE IF EXISTS asra_test" > /dev/null 2>&1
-sudo mysql < "$SDIR/test_schema.sql" > /dev/null 2>&1
+sudo mysql --default-character-set=utf8mb4 < "$SDIR/test_schema.sql" > /dev/null 2>&1
 
 # Oturum dosyaları: önceki çalışmalardan gelen oturumlar geçersiz kılınır.
 find /tmp -maxdepth 1 -name 'sess_*' -delete 2>/dev/null
 
 # Referans kullanıcı (tarayıcı testleri buna giriş yapar).
 UIHASH=$(php -r "echo password_hash('Test123!xyz', PASSWORD_DEFAULT);")
-sudo mysql -N asra_test -e "INSERT IGNORE INTO users (username, password_hash, avatar_color, approval_status, online_status, last_seen, created_at)
+sudo mysql --default-character-set=utf8mb4 -N asra_test -e "INSERT IGNORE INTO users (username, password_hash, avatar_color, approval_status, online_status, last_seen, created_at)
      VALUES ('uiadmin','$UIHASH','c1','approved',0,UTC_TIMESTAMP(),UTC_TIMESTAMP())" > /dev/null 2>&1
 
-sudo mysql -N asra_test -e "SELECT 1" > /dev/null 2>&1
+sudo mysql --default-character-set=utf8mb4 -N asra_test -e "SELECT 1" > /dev/null 2>&1

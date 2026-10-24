@@ -117,7 +117,6 @@ UA1="PW-Test-pwuser1/1.0"; JAR1="$TDIR/jar_pwuser1.txt"; rm -f "$JAR1"
 api_get "$JAR1" "$UA1" session "$TDIR/r.json" >/dev/null
 CSRF1=$(jget "$TDIR/r.json" '$.csrf_token')
 [ -n "$CSRF1" ] && [ "$CSRF1" != "__MISSING__" ] && ok "csrf jetonu alındı" || bad "csrf jetonu alınamadı"
-api_post "$JAR1" "$UA1" "$CSRF1" check_invite_code '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$TDIR/r.json" >/dev/null
 api_post "$JAR1" "$UA1" "$CSRF1" register '{"username":"pwuser1","password":"Test123!xyz","password_confirm":"Test123!xyz"}' "$TDIR/r.json" >/dev/null
 sql "UPDATE users SET approval_status='approved' WHERE username='pwuser1'"
 LOGIN_CODE=$(api_post "$JAR1" "$UA1" "$CSRF1" login '{"username":"pwuser1","password":"Test123!xyz"}' "$TDIR/r.json")
@@ -131,7 +130,6 @@ CSRF1=$(jget "$TDIR/r.json" '$.csrf_token'); [ "$CSRF1" = "__MISSING__" ] && CSR
 UA2="PW-Test-pwuser2/1.0"; JAR2="$TDIR/jar_pwuser2.txt"; rm -f "$JAR2"
 api_get "$JAR2" "$UA2" session "$TDIR/r.json" >/dev/null
 CSRF2=$(jget "$TDIR/r.json" '$.csrf_token')
-api_post "$JAR2" "$UA2" "$CSRF2" check_invite_code '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$TDIR/r.json" >/dev/null
 api_post "$JAR2" "$UA2" "$CSRF2" register '{"username":"pwuser2","password":"Test123!xyz","password_confirm":"Test123!xyz"}' "$TDIR/r.json" >/dev/null
 sql "UPDATE users SET approval_status='approved' WHERE username='pwuser2'"
 api_post "$JAR2" "$UA2" "$CSRF2" login '{"username":"pwuser2","password":"Test123!xyz"}' "$TDIR/r.json" >/dev/null

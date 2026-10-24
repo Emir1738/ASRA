@@ -44,14 +44,10 @@ class CaptureFileProvider : ContentProvider() {
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         val file = resolve(uri)
-        val flags = if (mode.contains("w")) {
-            ParcelFileDescriptor.MODE_READ_WRITE or
-                ParcelFileDescriptor.MODE_CREATE or
-                ParcelFileDescriptor.MODE_TRUNCATE
-        } else {
-            ParcelFileDescriptor.MODE_READ_ONLY
-        }
-        if (mode.contains("w")) {
+        // "rw" dosyayı KESMEMELİ: kamera yazdıktan sonra yeniden açıp okurken
+        // eski uygulama bütün içeriği MODE_TRUNCATE yüzünden sıfırlıyordu.
+        val flags = ParcelFileDescriptor.parseMode(mode)
+        if (mode.contains("w") || mode.contains("a")) {
             file.parentFile?.mkdirs()
             if (!file.exists()) file.createNewFile()
         }
@@ -72,7 +68,7 @@ class CaptureFileProvider : ContentProvider() {
     private fun resolve(uri: Uri): File {
         val ctx = context ?: throw IllegalStateException("provider not attached")
         val name = uri.lastPathSegment ?: throw IllegalArgumentException("missing name")
-        if (name.contains("..") || name.contains('/') || name.contains('\\')) {
+        if (!name.matches(Regex("asra_[0-9]{13,}\\.(jpg|mp4)"))) {
             throw SecurityException("invalid capture path")
         }
         return File(captureDir(ctx), name)

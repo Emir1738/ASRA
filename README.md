@@ -1,16 +1,61 @@
+# GitHub kaynak paketi · ASRA 1.7.3
+
+**Bu kopya canlı dağıtım dosyası değildir.** `auth.php` yalnızca
+`ASRA_DB_DSN`, `ASRA_DB_USER`, `ASRA_DB_PASSWORD` sunucu ortam değişkenleri
+sağlanırsa veritabanına bağlanır. Canlı veritabanı parolası, GitHub tokenı ve
+APK imza anahtarı/parolası bu pakete konulmadı. Eski Git geçmişinde yayımlanan
+sırlar yalnızca yeni commit ile kaybolmaz; parola/tokenı döndürün ve geçmişi
+ayrıca güvenli yöntemle temizleyin. Android APK'sı aynı eski imzayla güncellenir.
+
 # ASRA
 
 Site (PHP) + Android uygulaması (WebView, Kotlin) + tam E2E test altyapısı.
+
+## Sürüm 1.7.3 (versionCode 30)
+
+- **Geri tuşu kilitlenmez:** WebView yanıtı gelmezse zaman aşımıyla çıkar;
+  renderer yeniden kurulurken/sayfa değişirken eski callback yeni ekrana işlemez.
+- **Dosya/çekim:** Kamera uygulamasına URI izni ClipData ile aktarılır;
+  fotoğraf ve video birlikte kabul edilirse tür seçimi açılır. Başlatılamayan
+  kamera dosya seçimine düşer, tam boyutlu çekim küçük resme tercih edilir;
+  tek dosyalı forma birden çok URI verilmez.
+- **Dış uygulama bağlantıları:** e-posta ve SMS bağlantıları doğru Android
+  SENDTO eylemini kullanır; telefon araması DIAL ile açılır.
+- **Oturum taşıma:** yeni korumalı alanda oturum varsa eski cihaz-kilit-öncesi
+  kayıt onu ezmez. İmza parolaları koddan kaldırıldı; imza anahtarı Git dışı.
+
+**Önceki 1.7.2 iyileştirmeleri de korunur:**
+
+- **Android geri tuşu** modal → menü → alt ekran → ana ekrandan çıkış sırasını
+  izler; SPA geçmişinde eski giriş sayfasına gitmez.
+- **Dış bağlantılar** uygulama WebView'ine değil sistem tarayıcısına gider.
+  Uygulama yalnızca `https://asra.42web.io` kökenine güvenip native köprüyü
+  orada çalıştırır; izin istekleri kökenle sınırlandırılır, açık HTTP ve
+  üçüncü taraf çerezleri kapalıdır.
+- **Dosya seçimi** kamera izni sormadan çalışır. Yalnızca doğrudan yakalama
+  için izin istenir; fotoğraf/video türleri karışmaz. `rw` modundaki kamera
+  dosyasını yanlışlıkla sıfırlama ve boş çekim artıkları giderildi.
+- **Oturum** çerezleri güncelleme sonrası ayrı ayrı geri kurulur, oturum
+  kapatıldığında kaydedilmiş kopyalar kaldırılır; eski cihaz-kilit-öncesi
+  kayıtlar korumalı alana taşınır. User-Agent gerçek APK sürümüdür.
+- **Sunucu:** 24 saati dolan mesaj/form/yorum, fiziksel temizlikten önce bile
+  şikayete kapalıdır (404); önceki şikayet kanıtları korunur. API değişikliği
+  için `asra-yukleme/auth.php` yüklenmelidir.
+
+Dağıtım: `asra-yukleme/` (3 sunucu dosyası + `asra-1.7.3.apk` + yönerge).
+Mevcut kurulumun üzerine güncellenebilir; imza sertifikası değişmedi.
+Android fiziksel cihaz/emülatör kurulumu bu ortamda yapılmadı; JVM + Node
+mantık testleri, gerçek Chromium site smoke'u ve imzalı APK denetimi yapıldı.
 
 ## Yapı
 
 | Klasör | İçerik |
 |---|---|
 | `asra-site-fix/` | **Güncel site** — `auth.php` (API), `index.html` (arayüz), `.htaccess` |
-| `asra-apk-build/` | Android kaynak (Kotlin) + derlenmiş **`asra-1.7.1.apk`** (imzalı) |
+| `asra-apk-build/` | Android kaynak (Kotlin) + derlenmiş **`asra-1.7.3.apk`** (imzalı) |
 | `_tests/` | BASH/CLI + Chromium E2E suite'leri |
-| `.setup/` | Test koşucusu ve ortam kurulum betikleri (`run-tests.sh`, `install-testenv.sh`, `install-toolchain.sh`) — çalışma alanında `/home/user/.setup/` yolunda durur |
-| `asra-yukleme/` | Sunucuya yüklenecek **hazır paket**: `auth.php` + `index.html` + `.htaccess` + APK + `YUKLEME-NOTU.txt`. Kaynak `asra-site-fix/`'tir; bu klasör onun kopyasıdır ve her değişiklikte yeniden eşitlenir (sha256 ile doğrulanır) |
+| `.setup/` | Test koşucusu ve ortam kurulum betikleri (`run-tests.sh`, `install-testenv.sh`, `install-toolchain.sh`) — proje kökünde `.setup/` yolunda durur |
+| `asra-yukleme/` | Veritabanı ortam değişkenleri sağlanınca yüklenebilecek **örnek paket**: `auth.php` + `index.html` + `.htaccess` + APK + `YUKLEME-NOTU.txt`. Kaynak `asra-site-fix/`'tir; bu klasör onun kopyasıdır ve her değişiklikte yeniden eşitlenir (sha256 ile doğrulanır) |
 
 Depoya **girmeyen** çalışma alanı klasörleri: `secrets/` (Firebase servis hesabı
 özel anahtarı) ve `uploads/` (kullanıcı yüklemeleri). İkisi de `.gitignore` ile
@@ -36,7 +81,7 @@ açıkça engellenmiştir.
 - **Sıfır-istek oda girişi:** son 200 mesaj `localStorage`'dan çizilir; oda
   okunmuş durumdaysa girişte hiç istek gitmez. Mesaj anında yerel çizilir ve
   arka planda 1 istekle iletilir (outbox).
-- **Şema kendini kurar:** `ensureCoreSchema()` 9 çekirdek tabloyu ve 20 odalık
+- **Şema kendini kurar:** `ensureCoreSchema()` 9 çekirdek tabloyu ve 21 odalık
   kataloğu `IF NOT EXISTS` / `INSERT IGNORE` ile kurar. **Boş bir veritabanına
   bile** yalnızca dosyaları yüklemek yeterlidir; SQL yüklemek gerekmez.
 - **5 sn gönderim cooldown:** buton üzerinde 5→4→3→2→1 geri sayımı; süre bitmeden
@@ -108,16 +153,16 @@ açıkça engellenmiştir.
   (3) sunucudaki `auth.php` eskiyse (yanıtta `includes_unsubmitted` yoksa)
   liste sessizce boş kalmıyor, moderatöre hangi dosyayı yükleyeceğini söyleyen
   uyarı çıkıyor. Sunucu sürümü `?action=health` yanıtındaki `build` alanından
-  doğrulanır (bu sürüm: `v31`).
-- **Hit koruması (kalıcı):** 60/dk host bütçesi + uç bazlı limitler; yetkili
-  "erişim kodu" aç/kapa + otomatik sabit kod üretimi.
+  doğrulanır (bu paket sunucusu: `v34`).
+- **Hit koruması (kalıcı):** sıcak okuma varsayılanı 180/dk (tavan 600),
+  oturum başına 90/dk + uç bazlı limitler. Eski davetiye/erişim kodu kapısı yok.
 - **Güvenli oturum:** hatırla-token ile sessiz oturum kurtarma (uygulama
   güncellemesinde hesap düşmez). Kimlik eşleştirmesi yalnızca benzersiz token +
   uygulama kimliğiyle.
 - **CSP:** inline style/script SHA-256 hash'li (katı) ve `connect-src 'self'` —
   üçüncü taraf hiçbir kaynağa bağlantı açılmaz.
-  Güncel hash'ler — style: `aCJi/6WSe8xD5uQIEshH2B/h/HTB9JPRsZZZ0jnFjrQ=`,
-  script: `kmwzOB/bAupQPp0VnSFx1lE8k9/+z6j11dpVyrQ5NqM=`.
+  Güncel hash'ler — style: `gT23H7Z65O0iV+qpYm3GQr3XjxyJoMMxSiXezgxjiDQ=`,
+  script: `0/Pa/48WRGufSgYL01wEH6nnNVYaxxeuSgPVIF+gDZc=`.
   CSS/JS her değiştiğinde `bash _tests/csp_hash_check.sh asra-site-fix/index.html`
   çalıştırılmalı; hash tutmazsa sayfa tarayıcıda tamamen çalışmaz.
 
@@ -170,40 +215,20 @@ Sohbet ederken: mesaj gönderildikten sonra 2 dakika boyunca ritim 10 sn'ye
 iner (6 `get_rooms`/dk), karşı tarafın yanıtı en geç 10 sn'de görünür. Pencere
 kapanınca ritim kendiliğinden 60 sn'ye döner.
 
-Tavanlar: sunucu dakika bütçesi `HIT_PROTECTION_MAX_REQUESTS = 60`, oturum
-bütçesi `HIT_PROTECTION_SESSION_MAX_REQUESTS = 50`, istemci arka plan bütçesi
-`BACKGROUND_BUDGET_MAX_REQUESTS = 6 / 60 sn`. Boşta bir kullanıcı sunucu
-bütçesinin **%1,7**'sini kullanır.
+Tavanlar: sunucu sıcak-okuma varsayılanı **180/dk**, üst sınırı 600/dk;
+oturum bütçesi **90/dk**. İstemci arka plan bütçesi 6/60 sn. Boşta oda
+ritmi ilk beş tur 60 sn, sonra 120 sn ve son olarak **180 sn** tavandır;
+ekran gizliyken istek yoktur.
 
 ### Hit kotası hesabı
 
-Boşta maliyet **60 istek/saat** (1/dk). Sayfa açılışı **1 istek**tir — CSS, JS
-ve logo dosyaları `index.html` içine gömülü olduğu için ek dosya isteği yoktur.
-
-| Kullanım (ekran açık süre) | Günlük | Aylık (30 gün) |
-|---|---|---|
-| günde 2 saat | 120 | 3.600 |
-| günde 4 saat | 240 | 7.200 |
-| 7/24 açık | 1.440 | 43.200 |
-
-50.000'lik kota **günlükse** çok rahattır: 7/24 açık ~34 kullanıcı, günde 4 saat
-kullanımda ~208 kullanıcı sığar. **Aylıksa** dardır: 7/24 açık TEK kullanıcı
-43.200 ile kotanın %86'sını yer, günde 4 saat kullanımda ~6 kullanıcı sığar.
-Aylık kotada rahatlamak için ya kota yükseltilmeli ya da `ROOM_PULSE_IDLE_MS`
-60.000'den 120.000'e çıkarılmalıdır (maliyet yarıya iner, mesaj gecikmesi
-2 dakikaya çıkar).
-
-> Not: Tablodaki sayılar boştadır. Aktif sohbet her mesaj için +1 istek
-> (gönderim) ve 2 dakika boyunca +5 istek/dk ekler.
-
-**Asıl dar boğaz kota değil, sunucudaki hesap geneli tavandır:**
-`consumeGlobalReadBudget` tüm hesabı kapsayan **60 sıcak-okuma/dk** sınırı
-uygular (`get_rooms`, `get_messages`, `session` … bu kovadadır) ve aşılınca
-90 sn boyunca `429 HOST_LIMIT_REACHED` döner. Boşta kullanıcı 1 istek/dk
-olduğu için bu tavan ~60 eşzamanlı boşta kullanıcıya denk gelir; aynı anda
-sohbet eden kullanıcı 6 istek/dk tükettiğinden pratikte ~10 eşzamanlı aktif
-kullanıcıda devreye girer. Kullanıcı sayısı bu seviyeye yaklaşırsa
-`ASRA_HOT_READS_PER_MIN` yükseltilmelidir (tavan `HIT_PROTECTION_MAX_REQUESTS`).
+Sayfa açılışı 1 istek (gömülü CSS/JS/görseller); başında durulmayan açık
+sayfada kademeli ritimle yaklaşık 2 saatte 45, 4 saatte 85 ve 24 saatte
+485 `get_rooms` isteği üretilir. Bu, önceki sabit 60 sn ritminden daha
+seyrektir. Aktif sohbet gönderimleri ve yeni mesajlar ek trafik yaratır;
+50.000'lik kotanın günlük mü aylık mı olduğu hosting tarifesine bağlıdır.
+Gecikmeyi/gideri değiştirmek için `ROOM_PULSE_IDLE_MAX_MS` ve sunucu
+sınırı için `ASRA_HOT_READS_PER_MIN` (üst sınır 600) kullanılır.
 
 Kaldırılan uçlar artık **tanınmıyor**: `register_push`, `register_push_token`
 (POST → 405, GET → 404 `ACTION_NOT_FOUND`) ve `poll_push` (aynı).
@@ -227,10 +252,10 @@ Paket: `app.asra.client`. Bildirim/push ile ilgili tüm sınıflar silindi
 
 ## APK
 
-- Dosya: `asra-apk-build/asra-1.7.0.apk`
-- SHA-256: `63ba88254d0f1816636d58c0bed43e2b209c9683e5fbbe0acaa73d1deff087c1`
-- Boyut: 711.676 bayt
-- Sürüm: `versionCode 27` / `versionName 1.7.0`
+- Dosya: `asra-apk-build/asra-1.7.3.apk`
+- SHA-256: `a08b7323aae2233aa6c18223fcde518141002f8b1b9bb872fea740319e55f996`
+- Boyut: 718.560 bayt
+- Sürüm: `versionCode 30` / `versionName 1.7.3`
 - İzinler (yalnızca 5): `INTERNET`, `ACCESS_NETWORK_STATE`, `CAMERA`,
   `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS` — **bildirim izni yok**
 - Manifest'te `service`/`receiver` yok; yalnızca `MainActivity` +
@@ -238,7 +263,10 @@ Paket: `app.asra.client`. Bildirim/push ile ilgili tüm sınıflar silindi
 - İmza: v2 + v3 — **önceki sürümle aynı sertifika** (`3527c221…`), bu yüzden
   eski sürüm kurulu cihazlara doğrudan **güncelleme olarak** kurulur
 - Derleme: `ASRA_BUILD_HOME=/home/user/.asra-build bash asra-apk-build/tools/build_apk.sh`
-  (JDK 17 + Gradle 8.5 + Android SDK build-tools 34)
+  (JDK 17 + Gradle 8.5 + Android SDK build-tools 34). Yerel, Git dışı
+  `asra-release.jks` ve `ASRA_SIGN_STORE_PASSWORD` / `ASRA_SIGN_KEY_PASSWORD`
+  ortam değişkenleri veya Git dışı `signing.properties` gerekir; parolaları
+  kaynak koduna veya terminal çıktısına eklemeyin.
 
 ## Kurulum (sunucu)
 
@@ -255,10 +283,10 @@ Belge köküne **üç** dosya birlikte yüklenir:
   bağlanmak gerekirse `ASRA_DB_DSN` / `ASRA_DB_USER` / `ASRA_DB_PASSWORD`
   ortam değişkenleri bu varsayılanları ezer (kod değişmeden).
 - **SQL yüklemek gerekmez.** Boş bir veritabanında ilk istek şemayı kurar:
-  9 çekirdek tablo + ek tablolar + 20 odalık katalog (`ensureCoreSchema`).
+  9 çekirdek tablo + ek tablolar + 21 odalık katalog (`ensureCoreSchema`).
   Tüm ifadeler `IF NOT EXISTS` / `INSERT IGNORE` olduğu için tekrar çalışmak
   zararsızdır, mevcut veri ezilmez.
-- Dışarıdan yüklenen SQL yalnızca 15 oda içeriyorsa eksik 5 oda otomatik
+- Dışarıdan yüklenen SQL yalnızca 15 oda içeriyorsa eksik odalar otomatik
   tamamlanır.
 - Şema kurulum işaretleri **veritabanı kimliğine göre** ayrılır
   (`asraSchemaKey()`); hesap/veritabanı değiştirdiğinde eski önbellek işareti
@@ -357,12 +385,12 @@ listesi "Mesaj bulunamadı" diyordu.
 ## Testler
 
 Önkoşul: PHP 8.4 (curl, mbstring, pdo_mysql, openssl), MariaDB, Chromium +
-puppeteer-core. Sunucu testlerde **üretimle aynı** yapılandırmayla ayağa
-kalkar; taklit edilen hiçbir harici servis yoktur.
+puppeteer-core. Test sunucusu yerel veritabanına bağlanır; sıcak-okuma
+sınırı kota testi için 60/dk olarak ayarlanır. RSS akışı yerel fixture kullanır.
 
 ```bash
 # tek komutla tam koşu (ortamı kendi onarır: php/chromium/mariadb/npm/SDK)
-bash /home/user/.setup/run-tests.sh /home/user/projects/ASRA-fcm <etiket>
+bash .setup/run-tests.sh "$PWD" v1.7.3
 
 # ya da elle:
 bash _tests/reset_env.sh          # DB + şema + referans kullanıcı
@@ -375,7 +403,7 @@ cd asra-site-fix && PHP_CLI_SERVER_WORKERS=8 \
 | Suite | Kapsam |
 |---|---|
 | `bash _tests/no_notification_test.sh` | Bildirim sisteminin **tamamen kalktığını** kanıtlar: kaynak taraması (istemci + sunucu + manifest + APK), kaldırılan uçların 405/404 dönmesi, mesaj akışının bildirimsiz çalışması, tarayıcıda izin istenmemesi/servis işçisi kaydedilmemesi. Tarayıcı bölümü ayrıca **sıfır-hit boşta düzenini** ölçer: periyodik yoklama zamanlanmaz, boşta `get_messages` gitmez, başka kullanıcı yazınca rozet değişimiyle **tek** `get_messages` gider ve mesaj ekranda çizilir |
-| `bash _tests/fresh_db_test.sh` | **Boş veritabanı / taşıma testi:** 0 tablolu bir veritabanına bağlanır, klasörde TEK .php olduğunu ve `auth.php` gömülü varsayılanının geçerli hesaba baktığını denetler; ilk isteğin 200 döndüğünü, 9 çekirdek tablonun ve 20 odanın otomatik oluştuğunu, kayıt→giriş→oda→mesaj akışının çalıştığını ve ikinci koşunun zararsız olduğunu kanıtlar |
+| `bash _tests/fresh_db_test.sh` | **Boş veritabanı / taşıma testi:** 0 tablolu bir veritabanına bağlanır, klasörde TEK .php olduğunu ve `auth.php`'nin DB ortam ayarlarını okuduğunu denetler; ilk isteğin 200 döndüğünü, 9 çekirdek tablonun ve 20 odanın otomatik oluştuğunu, kayıt→giriş→oda→mesaj akışının çalıştığını ve ikinci koşunun zararsız olduğunu kanıtlar |
 | `bash _tests/e2e_test.sh` | davet/kayıt/giriş, erişim kodu, hit koruması, oturum kurtarma, 12 ay inaktiflik, CSRF |
 | `bash _tests/message_delete_test.sh` | silme + 4 sn undo + kalıcı silme + sahiplik/çakışma hataları |
 | `bash _tests/csrf_heal_test.sh` | 419 kendini-onarma (oturum kaybı) |
@@ -384,6 +412,9 @@ cd asra-site-fix && PHP_CLI_SERVER_WORKERS=8 \
 | `bash _tests/password_change_test.sh` | **Şifre değiştirme:** uç kaydı (GET 405 / oturumsuz 401 / CSRF'siz 419), güncel şifre doğrulaması, yeni şifre kurallarının **tüm dalları**, aynı şifre reddi, hash'in gerçekten değişmesi, `session_version`'ın tam 1 artması, diğer cihazların hatırla-anahtarlarının silinip bu cihazınkinin korunması, brute-force politikası (kural hatası bütçeyi tüketmez / başarı sıfırlar / 5'ten sonra 429 / kilit kullanıcı bazlı) ve arayüz: üç şifre alanı, Göster-Gizle, zayıf şifrenin **istek atılmadan** yerinde reddi, yetkili mesajı, uçtan uca eski şifre reddi + yeni şifre girişi |
 | `bash _tests/i18n_test.sh` | **Çok dillilik (tr+en):** statik bütünlük (tr/en anahtar paritesi, koddaki her `t()` ve statik HTML'deki her `data-i18n*` değerinin sözlükte olması, `{param}` yer tutucu eşitliği, de/fr seçeneğinin kalkması) + API dil beyaz listesi (`en` kabul, `tr`ye dönüş) + gerçek Chromium'da uçtan uca: Türkçe arayüzün bozulmadığı, English seçilince ayarlar/menü/ana sayfa/şifre modalı/kural hatası/"şifremi unuttum" modalı/tarih biçiminde tek Türkçe karakter kalmadığı, sunucu hata mesajının İngilizceye çevrildiği, çıkıştan sonra giriş ekranının İngilizce kaldığı ve Türkçeye geri dönüşün çalıştığı |
 | `bash _tests/approval_visibility_test.sh` | **Onay kuyruğu görünürlüğü:** bekleyen her hesabın (nedeni yazılmış/yazılmamış) `admin_pending_approvals` listesine düştüğü, sıralamanın gönderilmiş-önde olduğu, `submitted` bayrağı ve null gönderim zamanının dürüst döndüğü, admin doğrulamasız oturumun 403 aldığı, kabul/red kararlarının nedeni yazılmamış hesaplarda da çalıştığı ve gerçek Chromium'da admin panelinin nedeni yazılmamış hesabı kayıt tarihi + "katılma nedeni henüz yazılmadı" notuyla çizdiği |
+| `bash _tests/info_room_test.sh` | Bilgi Odası rehberi, 24 saat saklama, şikayet kotası + vadesi dolmuş hedefler ve moderasyon kanıtı (152 kontrol) |
+| `bash _tests/apk_release_test.sh` | APK sürümü, imza/sertifika devamlılığı, izinler, açık HTTP engeli (11 kontrol) |
+| `node _tests/apk_webview_logic_test.js` | Android geri köprüsü ve fetch/cihaz kimliği için köken politikası (4 kontrol) |
 | `bash _tests/csp_hash_check.sh` | CSP hash / içerik bütünlüğü |
 
 Yardımcılar (suite'e dâhil değil):
@@ -391,34 +422,40 @@ Yardımcılar (suite'e dâhil değil):
 | Araç | Görev |
 |---|---|
 | `python3 _tests/csp_hash_sync.py asra-site-fix/index.html` | Satır içi betiğin CSP `script-src` hash'ini **yerinde tazeler**. `index.html`'deki betik her değiştiğinde çalıştırılmalı; hash tutmazsa tarayıcı betiğin tamamını sessizce engeller |
-| `node _tests/hit_olcum.js [oda-sn] [ana-ekran-sn]` | Gerçek hızda hit ölçümü: davetle girer, odaya girer ve ekrana dokunmadan hosta giden tüm `auth.php` isteklerini sayar |
+| `node _tests/hit_olcum.js [oda-sn] [ana-ekran-sn]` | Gerçek hızda hit ölçümü: odaya girer ve ekrana dokunmadan hosta giden tüm `auth.php` isteklerini sayar |
+| `bash _tests/info_ui_smoke_test.sh` | Elle çalışan gerçek Chromium kontrolü: kart, sekmeler, kalp, Android geri köprüsü (23 UI) |
+| `cd asra-apk-build && gradle :app:testDebugUnitTest` | Android/JVM testleri: URL, oturum çerezi, kamera/geri tuşu/bağlantı politikası (15 kontrol) |
 
 ### Son koşu
 
 `bash .setup/run-tests.sh <proje-kökü> <etiket>`
 
-Son tam koşu: `v31` (**bekleyenleri gör/yenile:** Herkesi Gör / Yenile düğmesi,
-sayaç satırı, tıklama yutan 3 sn eylem kilidinin kökten çözümü, elle yenilemede
-hız-sınırı beklemesinin atlanması ve eski sunucu sürümü uyarısı). Önceki: `v30`
-(onay kuyruğu görünürlüğü), `v29` (çok dillilik onarımı: tr + en).
+Son tam koşu: `v1.7.3` — PHP/API + Chromium + imzalı APK denetimi.
 
 | Suite | Sonuç |
 |---|---|
 | `csp_hash_check` | ✓2 ✗0 |
-| `no_notification_test` | ✓70 ✗0 |
-| `fresh_db_test` | ✓30 ✗0 |
-| `throttle_release_test` | ✓11 ✗0 |
-| `legacy_schema_test` | ✓5 ✗0 |
-| `e2e_test` | ✓53 ✗0 |
-| `message_delete_test` | ✓29 ✗0 |
+| `apk_release` | ✓11 ✗0 |
+| `apk_webview_logic` | ✓4 ✗0 |
+| `no_notification` | ✓76 ✗0 |
+| `fresh_db_test` | ✓29 ✗0 |
+| `throttle_release` | ✓11 ✗0 |
+| `legacy_schema` | ✓5 ✗0 |
+| `e2e_test` | ✓38 ✗0 |
+| `message_delete` | ✓29 ✗0 |
 | `csrf_heal_test` | ✓5 ✗0 |
 | `cooldown_test` | ✓20 ✗0 |
-| `ui_fix_browser_test` | ✓18 ✗0 |
-| `retention_countdown_test` | ✓45 ✗0 |
-| `password_change_test` | ✓130 ✗0 |
-| `i18n_test` | ✓65 ✗0 |
-| `approval_visibility_test` | ✓62 ✗0 |
-| **TOPLAM** | **✓545 ✗0** |
+| `ui_fix_browser` | ✓18 ✗0 |
+| `retention_countdown` | ✓45 ✗0 |
+| `password_change` | ✓130 ✗0 |
+| `i18n` | ✓65 ✗0 |
+| `approval_visibility` | ✓62 ✗0 |
+| `info_room_test` | ✓152 ✗0 |
+| **TOPLAM** | **✓702 ✗0** |
+
+Ek olarak Gradle `:app:testDebugUnitTest` **9/9**; elle çalışan
+`bash _tests/info_ui_smoke_test.sh` (gerçek Chromium) **UI 23/23,
+JS hatası 0; kabuk 6/6**. Android cihaz/emülatör testi yapılmadı.
 
 ## Sunucuya yükleme
 
@@ -429,8 +466,9 @@ Belge kökünde duruyorsa **silinmesi gerekenler**: `firebase-messaging-sw.js`
 ve `asra-fcm-service-account.json`. Sunucu artık ikisini de kullanmıyor;
 ikincisi bir RSA özel anahtarıdır ve web kökünde durmamalıdır.
 
-APK: `asra-1.7.1.apk` cihazlara doğrudan kurulur (eski sürümün üzerine
-güncelleme olarak da kurulur).
+APK: `asra-1.7.3.apk` cihazlara doğrudan kurulur (1.7.1/1.7.2 üzerine aynı
+imzayla güncelleme olur). Şikayet/API düzeltmesi için yeni `auth.php` de
+yüklenir; canlı site sürümünden APK dosyası tek başına sorumlu değildir.
 
 ### Eski sürüm notu
 

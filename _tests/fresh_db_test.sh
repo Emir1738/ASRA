@@ -12,7 +12,7 @@
 #  Kanıtlananlar:
 #    1. Boş veritabanında ilk istek 500 DEĞİL 200 döner (şema kendini kurar)
 #    2. 9 çekirdek tablo + ek tablolar otomatik oluşur
-#    3. Oda kataloğu TAM (20 oda) tohumlanır — dışarıdan SQL yüklemeye gerek yok
+#    3. Oda kataloğu TAM (21 oda — Bilgi Odası dahil) tohumlanır — dışarıdan SQL yüklemeye gerek yok
 #    4. Kayıt → giriş → get_rooms → send_message → get_messages uçtan uca çalışır
 #    5. İkinci koşu zararsızdır (idempotent): tablo/oda sayısı değişmez
 # ============================================================================
@@ -53,13 +53,14 @@ cp "$ROOT/asra-site-fix/auth.php" "$ROOT/asra-site-fix/index.html" "$ROOT/asra-s
 PHPSAYISI=$(ls "$SITE"/*.php 2>/dev/null | wc -l)
 chk "$PHPSAYISI" "1" "klasörde TEK .php var (auth.php)"
 
-# auth.php tek başına yeterli olmalı: gömülü varsayılan geçerli hesaba bakmalı.
-grep -q "mysql:host=sql303.infinityfree.com;port=3306;dbname=if0_42805855_asra" "$SITE/auth.php" \
-  && ok "auth.php gömülü varsayılanı sql303 / if0_42805855_asra" \
-  || bad "auth.php gömülü varsayılanı geçerli hesaba bakmıyor"
-grep -q "envValue('ASRA_DB_USER', 'if0_42805855')" "$SITE/auth.php" \
-  && ok "auth.php gömülü kullanıcı if0_42805855" \
-  || bad "auth.php gömülü kullanıcı yanlış"
+# GitHub'daki kaynak parola/hesap içermez; DB ayarı sunucu ortamından
+# alınmalı. Bu testte ASRA_DB_* ile boş asra_fresh veritabanı doğrulanır.
+grep -q "'ASRA_DB_DSN'" "$SITE/auth.php" \
+  && ok "auth.php DSN ortam ayarını okuyor" \
+  || bad "auth.php DSN ortam ayarını okumuyor"
+grep -q "'ASRA_DB_USER'" "$SITE/auth.php" \
+  && ok "auth.php DB kullanıcı ortam ayarını okuyor" \
+  || bad "auth.php DB kullanıcı ortam ayarını okumuyor"
 if grep -q "sql102\|if0_42676193" "$SITE/auth.php"; then bad "auth.php içinde ESKİ hesap kalıntısı var"; else ok "auth.php içinde eski hesap kalıntısı yok"; fi
 
 # Eski şema işaret dosyaları temizlenir (24 saatlik önbellek testi bozmasın)
@@ -90,10 +91,13 @@ done
 chk "$CORE" "9" "9 çekirdek tablo otomatik oluştu${MISSING:+ (eksik:$MISSING)}"
 
 ROOMS=$(sql "SELECT COUNT(*) FROM rooms")
-chk "$ROOMS" "20" "oda kataloğu tam tohumlandı (20 oda)"
+chk "$ROOMS" "21" "oda kataloğu tam tohumlandı (21 oda — Bilgi Odası dâhil)"
 
-EK=$(sql "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='asra_fresh' AND TABLE_NAME IN ('media_files','auth_remember_tokens','platform_settings','room_reads','user_devices','blocked_identifiers','aa_quest_claims')")
-chk "$EK" "7" "ek tablolar da oluştu (media/token/ayar/okuma/cihaz/kimlik/ekonomi)"
+# Ek tablolar: media/token/okuma/cihaz/kimlik/ekonomi + Bilgi Odası ve şikayet
+# altyapısı (7 yeni tablo: site_settings, info_items, info_forms,
+# info_form_replies, info_form_likes, info_form_reply_likes, complaints).
+EK=$(sql "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='asra_fresh' AND TABLE_NAME IN ('media_files','auth_remember_tokens','room_reads','user_devices','blocked_identifiers','aa_quest_claims','site_settings','info_items','info_forms','info_form_replies','info_form_likes','info_form_reply_likes','complaints')")
+chk "$EK" "13" "ek tablolar da oluştu (13)"
 
 VER=$(sql "SELECT COUNT(*) FROM rate_limits WHERE rate_key LIKE 'schema:runtime:%'")
 chk "$VER" "1" "şema sürüm damgası yazıldı (tekrar kurulum tetiklenmez)"
@@ -103,10 +107,6 @@ JAR="$TDIR/jar.txt"; rm -f "$JAR"
 curl -s -A "Fresh/1.0" -c "$JAR" "$BASE?action=session" -o "$TDIR/r.json"
 CSRF=$(python3 -c "import json;print(json.load(open('$TDIR/r.json')).get('csrf_token',''))" 2>/dev/null)
 [ -n "$CSRF" ] && ok "oturum + CSRF alındı" || bad "CSRF alınamadı"
-
-curl -s -A "Fresh/1.0" -b "$JAR" -c "$JAR" -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
-  -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$BASE?action=check_invite_code" -o "$TDIR/r.json"
-chk "$(jget "$TDIR/r.json" '$.ok')" "True" "davet kodu kabul edildi"
 
 curl -s -A "Fresh/1.0" -b "$JAR" -c "$JAR" -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
   -d '{"username":"freshuser","password":"Test123!xyz","password_confirm":"Test123!xyz"}' \
@@ -124,7 +124,7 @@ curl -s -A "Fresh/1.0" -b "$JAR" -c "$JAR" "$BASE?action=session" -o "$TDIR/r.js
 CSRF=$(python3 -c "import json;print(json.load(open('$TDIR/r.json')).get('csrf_token',''))" 2>/dev/null)
 
 curl -s -A "Fresh/1.0" -b "$JAR" -c "$JAR" "$BASE?action=get_rooms" -o "$TDIR/r.json"
-chk "$(jget "$TDIR/r.json" '$.rooms')" "20" "get_rooms 20 oda döndürdü"
+chk "$(jget "$TDIR/r.json" '$.rooms')" "21" "get_rooms 21 oda döndürdü (Bilgi Odası en üstte)"
 
 curl -s -A "Fresh/1.0" -b "$JAR" -c "$JAR" -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
   -d '{"room_id":1,"message":"bos veritabani testi"}' "$BASE?action=send_message" -o "$TDIR/r.json"
@@ -136,7 +136,7 @@ grep -q "bos veritabani testi" "$TDIR/r.json" && ok "mesaj geri okundu" || bad "
 echo "== 5) İkinci koşu zararsız mı (idempotent)? =="
 CODE2=$(curl -s -o /dev/null -w '%{http_code}' "$BASE?action=session" 2>/dev/null); CODE2=${CODE2:-000}
 chk "$CODE2" "200" "ikinci istek de 200"
-chk "$(sql 'SELECT COUNT(*) FROM rooms')" "20" "oda sayısı değişmedi (20)"
+chk "$(sql 'SELECT COUNT(*) FROM rooms')" "21" "oda sayısı değişmedi (21)"
 chk "$(sql 'SELECT COUNT(*) FROM users')" "1" "kullanıcı çoğalmadı (1)"
 
 echo "== 6) Tanı ucu: /auth.php?action=health =="
@@ -145,7 +145,7 @@ HCODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE?action=health" 2>/dev/null
 chk "$HCODE" "200" "health 200 döndü (JSON)"
 chk "$(jget "$TDIR/health.json" '$.ok')" "True" "health: ok=true"
 chk "$(jget "$TDIR/health.json" '$.db_connected')" "True" "health: veritabanı bağlı"
-[ "$(jget "$TDIR/health.json" '$.rooms')" = "20" ] && ok "health: 20 oda görünüyor" || bad "health: oda sayısı yanlış"
+[ "$(jget "$TDIR/health.json" '$.rooms')" = "21" ] && ok "health: 21 oda görünüyor" || bad "health: oda sayısı yanlış"
 grep -q '"db_name":"asra_fresh"' "$TDIR/health.json" && ok "health: doğru veritabanı adı" || bad "health: veritabanı adı yanlış"
 # Parola/kullanıcı adı sızmamalı
 if grep -q "asra_test_pw\|SDspuzgAn17CUg" "$TDIR/health.json"; then bad "health PAROLA sızdırıyor"; else ok "health parola sızdırmıyor"; fi

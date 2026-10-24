@@ -40,22 +40,34 @@ set_error_handler(function (int $severity, string $message, string $file, int $l
 });
 
 
-const PERMANENT_INVITE_CODE = 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
 // Şema sürüm anahtarı: yükseltildiğinde her veritabanı kurulumu bir kez
 // yeniden çalışır (idempotenttir) ve yeni tablo/tohumlar eklenir.
-const SCHEMA_VERSION_KEY = 'schema:runtime:v19';
+const SCHEMA_VERSION_KEY = 'schema:runtime:v21';
 const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // Sunucu sürüm işareti: /auth.php?action=health yanıtında döner. Yükleme
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v31';
+const ASRA_BUILD = 'v34';
+// Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
+// göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
+// ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
+const INFO_ROOM_ID = 0;
+// Bir kullanıcının günde gönderebileceği toplam şikayet (UTC gün).
+const COMPLAINT_DAILY_LIMIT = 5;
+// Haber akışı tazeleme aralığı: 24 saatte bir.
+const INFO_FEED_REFRESH_SECONDS = 86400;
+const INFO_FEED_HTTP_TIMEOUT = 10;
+// Varsayılan güvenilir haber kaynakları (yönetici panelinden değiştirilebilir;
+// ortam değişkeni ASRA_INFO_FEED_URLS ile ezilebilir — testler yerel beslemeyi
+// bu yolla bağlar). Satır veya virgülle ayrılır.
+const DEFAULT_INFO_FEED_URLS = "https://www.aa.com.tr/tr/rss/default?cat=guncel\nhttps://www.nasa.gov/rss/dyn/breaking_news.rss";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MESSAGE_RETENTION_HOURS = 24;
 const ONLINE_WINDOW_SECONDS = 120;
 const DEVICE_COOKIE_NAME = 'ASRA_DEVICE';
 const DEVICE_COOKIE_LIFETIME = 157680000;
-// Kayıtlı (davet kodu ile giren) kullanıcıların hesabı kolay kolay silinmesin:
+// Kayıtlı kullanıcıların hesabı kolay kolay silinmesin:
 // inaktiflik penceresi 12 ay. 5 ay iken kullanıcılar kısa aralıklarla "kayıptı".
 const INACTIVE_ACCOUNT_MONTHS = 12;
 const INACTIVE_ACCOUNT_REASON = '12 ay boyunca aktif olmadığın için hesabın silindi.';
@@ -77,11 +89,6 @@ const HIT_PROTECTION_COOLDOWN_SECONDS = 30;
 // Oturum başına sınır: tek bir bozuk/otomatikleşmiş istemciyi durdurur.
 // Asıl kötüye kullanım koruması budur; genel tavan yalnızca emniyet sübabıdır.
 const HIT_PROTECTION_SESSION_MAX_REQUESTS = 90;
-// Açık erişim kodu — yetkili panel "Kod" bölümü:
-// AÇIKKEN bu kodu giren HERKES sınırsız (davet hakkı tüketmeden) katılabilir.
-// KAPATILINCA kod geçersiz olur; tekrar AÇILINCA otomatik YENİ kod üretilir.
-const OPEN_CODE_SETTING = 'open_code';
-const OPEN_CODE_ENABLED_SETTING = 'open_code_enabled';
 
 final class ApiError extends RuntimeException
 {
@@ -178,16 +185,14 @@ function db(): PDO
         return $pdo;
     }
 
-    // Bağlantı bilgileri: geçerli InfinityFree hesabı (sql303 / if0_42805855).
-    // Tek dosyalık kurulum: auth.php tek başına yeterlidir. Farklı bir
-    // veritabanına bağlanmak gerekirse ASRA_DB_DSN / ASRA_DB_USER /
-    // ASRA_DB_PASSWORD ortam değişkenleri bu varsayılanları ezer.
+    // GitHub kaynak kopyası: üretim bilgisi yok. Dağıtımdan önce
+    // ASRA_DB_DSN / ASRA_DB_USER / ASRA_DB_PASSWORD ortamda tanımlanmalı.
     $dsn = envValue(
         'ASRA_DB_DSN',
-        'mysql:host=sql303.infinityfree.com;port=3306;dbname=if0_42805855_asra;charset=utf8mb4'
+        ''
     );
-    $dbUser = envValue('ASRA_DB_USER', 'if0_42805855');
-    $dbPassword = envValue('ASRA_DB_PASSWORD', 'SDspuzgAn17CUg');
+    $dbUser = envValue('ASRA_DB_USER', '');
+    $dbPassword = envValue('ASRA_DB_PASSWORD', '');
     $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -454,6 +459,73 @@ function ensureCoreSchema(PDO $pdo): void
   PRIMARY KEY (id),
   UNIQUE KEY uq_deleted_username (username)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS site_settings (
+  setting_key VARCHAR(64) NOT NULL,
+  setting_value TEXT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (setting_key)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS info_items (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  section ENUM(\'haber\',\'kaynak\',\'ders\',\'calisma\') NOT NULL DEFAULT \'haber\',
+  source ENUM(\'manual\',\'feed\',\'builtin\') NOT NULL DEFAULT \'manual\',
+  feed_key VARCHAR(64) NULL,
+  title VARCHAR(300) NOT NULL,
+  content MEDIUMTEXT NULL,
+  link VARCHAR(700) NULL,
+  author VARCHAR(64) NULL,
+  published_at DATETIME NULL,
+  updated_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_info_feed_key (feed_key),
+  KEY idx_info_section_pub (section, published_at)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS info_forms (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  author_id BIGINT UNSIGNED NOT NULL,
+  title VARCHAR(120) NOT NULL,
+  body MEDIUMTEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_info_forms_created (id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS info_form_replies (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  form_id BIGINT UNSIGNED NOT NULL,
+  author_id BIGINT UNSIGNED NOT NULL,
+  content VARCHAR(2000) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_ifr_form (form_id, id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS info_form_likes (
+  form_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (form_id, user_id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS info_form_reply_likes (
+  reply_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (reply_id, user_id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS complaints (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  target_type ENUM(\'chat\',\'form\',\'form_reply\') NOT NULL,
+  target_id BIGINT UNSIGNED NOT NULL,
+  target_author_id BIGINT UNSIGNED NULL,
+  target_username VARCHAR(30) NULL,
+  reporter_id BIGINT UNSIGNED NOT NULL,
+  reason VARCHAR(1000) NOT NULL,
+  snippet VARCHAR(300) NOT NULL DEFAULT \'\',
+  room_name VARCHAR(120) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_complaints_created (id),
+  KEY idx_complaints_reporter_day (reporter_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
         'CREATE TABLE IF NOT EXISTS rate_limits (
   rate_key VARCHAR(191) NOT NULL,
   attempts INT UNSIGNED NOT NULL DEFAULT 0,
@@ -495,9 +567,27 @@ function ensureCoreSchema(PDO $pdo): void
         );
     }
     if ($rows !== []) {
+        // MySQL, sql_mode'da NO_AUTO_VALUE_ON_ZERO yokken id=0'ı otomatik
+        // artırıma çevirir (Bilgi Odası id=0 olamaz, kopya satırlar ürer).
+        // Bu bağlantı için kip açılır; yalnızca tohum etkilenir.
+        try {
+            $pdo->exec("SET SESSION sql_mode = CONCAT(@@sql_mode, ',NO_AUTO_VALUE_ON_ZERO')");
+        } catch (Throwable $error) {
+            error_log('[schema] sql_mode ayarı yapılamadı: ' . $error->getMessage());
+        }
         $pdo->exec(
             'INSERT IGNORE INTO rooms (id, name, description, position) VALUES ' . implode(', ', $rows)
         );
+        // Geçiş dönemi onarımı: kip kapalıyken yazılmış kopya 'Bilgi Odası'
+        // satırları (yanlış kimlikle) içinde mesaj yoksa temizlenir.
+        try {
+            $pdo->exec(
+                "DELETE FROM rooms WHERE id <> " . INFO_ROOM_ID . " AND name = 'Bilgi Odası'
+                 AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.room_id = rooms.id)"
+            );
+        } catch (Throwable $error) {
+            error_log('[schema] Bilgi Odası kopyası temizlenemedi: ' . $error->getMessage());
+        }
     }
 }
 
@@ -517,7 +607,6 @@ function ensureRuntimeSchema(PDO $pdo): void
     // burada da garantilenir.
     if (schemaStampApplied($pdo, SCHEMA_VERSION_KEY)) {
         ensureIdentityInfra($pdo);
-        ensurePlatformInfra($pdo);
         $checked = true;
         return;
     }
@@ -987,6 +1076,7 @@ function ensureRuntimeSchema(PDO $pdo): void
         'users', 'rooms', 'announcements', 'messages', 'message_views',
         'message_deletions', 'room_reads', 'banned_users', 'deleted_users_log',
         'user_devices', 'blocked_identifiers', 'media_files', 'auth_remember_tokens', 'ai_safety_events', 'aa_frame_purchases', 'aa_quest_claims', 'aa_game_rewards', 'aa_daily_activity', 'aa_coin_adjustments', 'approval_request_blocks', 'rate_limits',
+        'site_settings', 'info_items', 'info_forms', 'info_form_replies', 'info_form_likes', 'info_form_reply_likes', 'complaints',
     ];
     $collation = $pdo->prepare(
         'SELECT TABLE_COLLATION FROM information_schema.TABLES
@@ -1026,7 +1116,6 @@ function ensureRuntimeSchema(PDO $pdo): void
     // hâlde veri göçleri henüz var olmayan tablolara dokunur ve her ilk
     // istekte "table doesn't exist" uyarısı üretir.
     ensureIdentityInfra($pdo);
-    ensurePlatformInfra($pdo);
 
     $pdo->exec("DELETE FROM rate_limits WHERE rate_key LIKE 'schema:runtime:%' AND rate_key <> '" . SCHEMA_VERSION_KEY . "'");
     markSchemaStamp($pdo, SCHEMA_VERSION_KEY);
@@ -1150,31 +1239,6 @@ function ensureIdentityInfra(PDO $pdo): void
  * yol açar; diğer altyapı fonksiyonlarındaki marker deseniyle
  * birebir aynı akış izlenir. Hiçbir adımda istek öldürmez.
  */
-function ensurePlatformInfra(PDO $pdo): void
-{
-    static $ready = false;
-    if ($ready) {
-        return;
-    }
-    if (schemaStampApplied($pdo, 'schema:platform:v1')) {
-        $ready = true;
-        return;
-    }
-    safeSchemaExec(
-        $pdo,
-        "CREATE TABLE IF NOT EXISTS platform_settings (
-            setting_key VARCHAR(64) NOT NULL,
-            setting_value TEXT NULL,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (setting_key)
-        ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
-        'platform_settings'
-    );
-    markSchemaStamp($pdo, 'schema:platform:v1');
-    $ready = true;
-}
-
-
 function sessionCookieOptions(): array
 {
     $params = session_get_cookie_params();
@@ -1372,7 +1436,7 @@ function respond(array $payload = [], int $status = 200): never
 
 function closeSessionEarlyForReads(string $action): void
 {
-    static $readActions = ['session','get_rooms','get_messages','get_message_views','get_user_profile','get_my_invite_code','admin_search_users','admin_pending_approvals','admin_access_code_status','get_economy','get_quests','heartbeat','get_banned_info','get_media','media'];
+    static $readActions = ['session','get_rooms','get_messages','get_message_views','get_user_profile','admin_search_users','admin_pending_approvals','get_economy','get_quests','heartbeat','get_banned_info','get_media','media','info_items','info_forms','info_form_replies','complaint_quota','admin_feed_status','admin_complaints'];
     if (!in_array($action, $readActions, true)) return;
     if (session_status() === PHP_SESSION_ACTIVE) {
         try { session_write_close(); } catch (Throwable $e) {}
@@ -2099,20 +2163,6 @@ function consumeGlobalReadBudget(PDO $pdo, string $bucket, int $maxRequests, int
  * 0/O, 1/I/L gibi birbirine karışan karakterler hariçtir. Her AÇILIŞTA
  * yeniden üretilir (eski kodun sızması halinde otomatik geçersiz kalır).
  */
-function generateOpenCode(): string
-{
-    $alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-    $last = strlen($alphabet) - 1;
-    $group = static function () use ($alphabet, $last): string {
-        $part = '';
-        for ($i = 0; $i < 4; $i++) {
-            $part .= $alphabet[random_int(0, $last)];
-        }
-        return $part;
-    };
-    return $group() . '-' . $group() . '-' . $group() . '-' . $group();
-}
-
 /**
  * Platform ayarları deposu. Tüm ayarlar istek başına bir kez, tek sorguyla
  * önbelleğe alınır; aynı istek içindeki sonraki okumalar DB'sizdir.
@@ -2158,34 +2208,12 @@ final class PlatformSettingsStore
 }
 
 /** Salt okuyucu platform ayarı erişimi. */
-function platformSetting(PDO $pdo, string $key, string $default = ''): string
-{
-    return PlatformSettingsStore::get($pdo, $key, $default);
-}
-
 /** Kalıcı platform ayarı yazımı. */
-function setPlatformSetting(PDO $pdo, string $key, string $value): string
-{
-    return PlatformSettingsStore::set($pdo, $key, $value);
-}
-
 /**
  * Açık erişim kodu durumu: aktif kod + anahtar durumu.
  * Bozuk/eksik tablo istekleri asla boğmaz: okuma hatası "kapalı + kod yok"
  * sayılır (fail-safe).
  */
-function openCodeState(PDO $pdo): array
-{
-    try {
-        $code = platformSetting($pdo, OPEN_CODE_SETTING);
-        $enabled = platformSetting($pdo, OPEN_CODE_ENABLED_SETTING, '0') === '1';
-    } catch (Throwable $error) {
-        error_log('[platform] open code state read skipped: ' . $error->getMessage());
-        return ['code' => '', 'enabled' => false];
-    }
-    return ['code' => $code, 'enabled' => $enabled];
-}
-
 function textLength(string $value): int
 {
     return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
@@ -2294,11 +2322,6 @@ function passwordAlgorithm(): string|int
     return defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_BCRYPT;
 }
 
-function newInviteCode(): string
-{
-    return 'ASRA-' . strtoupper(bin2hex(random_bytes(12)));
-}
-
 function avatarColor(): string
 {
     $colors = ['#5B6CF9', '#7C4DFF', '#009688', '#E85D75', '#F08C46', '#2E86DE', '#8E5CBA', '#2D9C6F'];
@@ -2309,54 +2332,6 @@ function nextHourIso(): string
 {
     $next = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->modify('+1 hour')->setTime((int) gmdate('H', time() + 3600), 0, 0);
     return $next->format(DateTimeInterface::ATOM);
-}
-
-function rotateInviteCodes(PDO $pdo): void
-{
-    // Davet rotasyonu yardımcı bakımdır; başarısız olması giriş veya davet
-    // ekranını sunucu hatasına düşürmemelidir.
-    if (!shouldRunMaintenance($pdo, 'invite_rotation', 120)) {
-        return;
-    }
-    $locked = false;
-    try {
-        $locked = (int) $pdo->query("SELECT GET_LOCK('asra_invite_rotation', 0)")->fetchColumn() === 1;
-        if (!$locked) {
-            return;
-        }
-        $stale = $pdo->query('SELECT id FROM users WHERE invite_code_updated_at < DATE_FORMAT(UTC_TIMESTAMP(), \'%Y-%m-%d %H:00:00\') LIMIT 200')->fetchAll();
-        if (!$stale) {
-            return;
-        }
-        $stmt = $pdo->prepare(
-            'UPDATE users
-             SET invite_code = ?, invite_code_updated_at = UTC_TIMESTAMP(),
-                 invite_code_consumed_at = NULL, invite_code_consumed_by = NULL
-             WHERE id = ?'
-        );
-        foreach ($stale as $user) {
-            for ($attempt = 0; $attempt < 5; $attempt++) {
-                try {
-                    $stmt->execute([newInviteCode(), $user['id']]);
-                    break;
-                } catch (PDOException $error) {
-                    if ((string) $error->getCode() !== '23000' || $attempt === 4) {
-                        throw $error;
-                    }
-                }
-            }
-        }
-    } catch (Throwable $error) {
-        error_log('[maintenance] invite rotation failed: ' . $error->getMessage());
-    } finally {
-        if ($locked) {
-            try {
-                $pdo->query("SELECT RELEASE_LOCK('asra_invite_rotation')");
-            } catch (Throwable $error) {
-                error_log('[maintenance] invite lock release skipped: ' . $error->getMessage());
-            }
-        }
-    }
 }
 
 function cleanupExpiredBans(PDO $pdo): void
@@ -2452,6 +2427,37 @@ function cleanupExpiredMessages(PDO $pdo, int $limit = 500): int
     cleanupOrphanAnnouncements($pdo);
     return $delete->rowCount();
 }
+
+/**
+ * Formlar ve yorumlari da oda mesajlariyla AYNI saklama politikasina tabidir
+ * (MESSAGE_RETENTION_HOURS = 24). Vadesi dolan formlar begenileri ve
+ * yorumlariyla birlikte kaldirilir; yorum begenileri de yorumlariyla gider.
+ * messages_cleanup ile ayni bakim dongusunde calisir.
+ */
+function cleanupExpiredForms(PDO $pdo, int $limit = 100): int
+{
+    $deadline = 'DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)';
+    $formIds = $pdo->prepare('SELECT id FROM info_forms WHERE created_at < ' . $deadline . ' ORDER BY id ASC LIMIT ' . (int) $limit);
+    $formIds->execute();
+    $ids = array_map('intval', $formIds->fetchAll(PDO::FETCH_COLUMN));
+    // Guvenlik agi: yalniz kalmis begeni satirlari (yarida kesilen silme veya
+    // eski surum artigi olabilir) her zaman supurulur.
+    $pdo->exec('DELETE rl FROM info_form_reply_likes rl LEFT JOIN info_form_replies r ON r.id = rl.reply_id WHERE r.id IS NULL');
+    $pdo->exec('DELETE fl FROM info_form_likes fl LEFT JOIN info_forms f ON f.id = fl.form_id WHERE f.id IS NULL');
+    if ($ids === []) {
+        return 0;
+    }
+    $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+    // Yorum begenileri -> yorumlar -> form begenileri -> formlar.
+    $pdo->prepare(
+        'DELETE FROM info_form_reply_likes WHERE reply_id IN (SELECT id FROM info_form_replies WHERE form_id IN (' . $placeholders . '))'
+    )->execute($ids);
+    $pdo->prepare('DELETE FROM info_form_replies WHERE form_id IN (' . $placeholders . ')')->execute($ids);
+    $pdo->prepare('DELETE FROM info_form_likes WHERE form_id IN (' . $placeholders . ')')->execute($ids);
+    $pdo->prepare('DELETE FROM info_forms WHERE id IN (' . $placeholders . ')')->execute($ids);
+    return count($ids);
+}
+
 
 function activeBan(PDO $pdo, int $userId): ?array
 {
@@ -2652,9 +2658,6 @@ function publicUser(array $user): array
         'aa_coins' => coinAmount($user['aa_coins'] ?? 0),
         'active_profile_frame' => $user['active_profile_frame'] ?? null,
         'total_active_seconds' => (int) ($user['total_active_seconds'] ?? 0),
-        'invite_reset_notice_at' => isset($user['invite_reset_notice_at']) && $user['invite_reset_notice_at'] ? gmdate(DateTimeInterface::ATOM, strtotime($user['invite_reset_notice_at'] . ' UTC')) : null,
-        'invite_code_consumed_at' => isset($user['invite_code_consumed_at']) && $user['invite_code_consumed_at'] ? gmdate(DateTimeInterface::ATOM, strtotime($user['invite_code_consumed_at'] . ' UTC')) : null,
-        'invite_code_consumed_by' => repairLegacyTurkishText($user['invite_code_consumed_by'] ?? null),
         'coin_debt_due_at' => isset($user['coin_debt_due_at']) && $user['coin_debt_due_at'] ? gmdate(DateTimeInterface::ATOM, strtotime($user['coin_debt_due_at'] . ' UTC')) : null,
         'coin_debt_notice_at' => isset($user['coin_debt_notice_at']) && $user['coin_debt_notice_at'] ? gmdate(DateTimeInterface::ATOM, strtotime($user['coin_debt_notice_at'] . ' UTC')) : null,
         'approval_status' => $user['approval_status'] ?? 'approved',
@@ -2663,17 +2666,10 @@ function publicUser(array $user): array
     ];
 }
 
-function requireInviteGate(): void
-{
-    if ((int) ($_SESSION['invite_verified_until'] ?? 0) <= time()) {
-        unset($_SESSION['invite_verified_until']);
-        throw new ApiError(403, 'INVITE_REQUIRED', 'Önce geçerli bir davetiye kodunu doğrulayın.');
-    }
-}
-
 function canonicalRoomCatalog(): array
 {
     return [
+        0 => ['Bilgi Odası', 'Haberler, kaynaklar, dersler, çalışma kağıtları ve topluluk formları.'],
         1 => ['Asra Genel', 'Topluluk gündemi, duyurular ve genel sohbet.'],
         2 => ['Asra Astrofotoğraf', 'Gece gökyüzü çekimleri, ekipman ve işleme teknikleri.'],
         3 => ['Asra Astronomi', 'Gök cisimleri, uzay araştırmaları ve gözlem notları.'],
@@ -2707,6 +2703,7 @@ function canonicalizeRoom(array $room, ?int $fallbackPosition = null): array
         $room['description'] = $canonical[1];
     }
     $room['id'] = $roomId;
+    $room['is_info'] = $roomId === INFO_ROOM_ID;
     return $room;
 }
 
@@ -3108,7 +3105,6 @@ function actionSession(PDO $pdo): never
     $payload = [
         'csrf_token' => $_SESSION['csrf_token'],
         'authenticated' => false,
-        'invite_verified' => ((int) ($_SESSION['invite_verified_until'] ?? 0) > time()) || $deviceState['has_account'],
         'device_has_account' => $deviceState['has_account'],
         'bound_username' => $deviceState['username'],
         'approval_block' => activeApprovalBlock($pdo, $deviceState['username']),
@@ -3145,60 +3141,8 @@ function actionSession(PDO $pdo): never
     respond($payload);
 }
 
-function actionCheckInvite(PDO $pdo, array $data): never
-{
-    $code = cleanText($data['code'] ?? null, 'Davetiye kodu', 64);
-    $key = rateKey('invite', clientIp());
-    assertNotRateLimited($pdo, $key);
-    rotateInviteCodes($pdo);
-
-    $valid = hash_equals(PERMANENT_INVITE_CODE, $code);
-    $inviteOwnerId = null;
-    if (!$valid) {
-        // Açık erişim kodu: AÇIKKEN bu kodla herkes sınırsız girer.
-        // Davet hakkı TÜKETİLMEZ (inviteOwner null kalır); kapatılınca bu
-        // yol kapanır ve kod işlemez.
-        $open = openCodeState($pdo);
-        if ($open['enabled'] && $open['code'] !== '' && hash_equals($open['code'], $code)) {
-            $valid = true;
-        }
-    }
-    if (!$valid) {
-        $stmt = $pdo->prepare('SELECT id, invite_code_consumed_at, invite_code_consumed_by FROM users WHERE invite_code = ? LIMIT 1');
-        $stmt->execute([$code]);
-        $owner = $stmt->fetch();
-        if ($owner && $owner['invite_code_consumed_at'] !== null) {
-            // Kod geçerli ama hakkı dolmuş: her davet kodu yalnızca bir kişiyi içeri alır.
-            throw new ApiError(409, 'INVITE_ALREADY_USED', 'Bu davet kodu bir kişi tarafından kullanıldı. Kod sahibine saat başında yeni kod verilecek.', [
-                'used_by' => repairLegacyTurkishText($owner['invite_code_consumed_by']),
-                'next_rotation_at' => nextHourIso(),
-            ]);
-        }
-        if ($owner) {
-            $valid = true;
-            $inviteOwnerId = (int) $owner['id'];
-        }
-    }
-    if (!$valid) {
-        recordFailedAttempt($pdo, $key, 10, 900, 900);
-        throw new ApiError(422, 'INVALID_INVITE', 'Davetiye kodu geçersiz veya süresi dolmuş.');
-    }
-    clearRateLimit($pdo, $key);
-    $_SESSION['invite_verified_until'] = time() + 1800;
-    $_SESSION['invite_owner_id'] = $inviteOwnerId;
-    $deviceState = deviceAccountState($pdo);
-    respond([
-        'message' => 'Davetiye kodu doğrulandı.',
-        'expires_in' => 1800,
-        'device_has_account' => $deviceState['has_account'],
-        'bound_username' => $deviceState['username'],
-        'approval_block' => activeApprovalBlock($pdo, $deviceState['username']),
-    ]);
-}
-
 function actionRegister(PDO $pdo, array $data): never
 {
-    requireInviteGate();
     consumeRequestLimit($pdo, rateKey('register', clientIp()), 5, 3600);
     assertDeviceAvailableForRegistration($pdo);
     $username = validatedUsername($data['username'] ?? null);
@@ -3218,9 +3162,9 @@ function actionRegister(PDO $pdo, array $data): never
         for ($attempt = 0; $attempt < 5; $attempt++) {
             try {
                 $insert = $pdo->prepare(
-                    "INSERT INTO users (username, password_hash, avatar_color, invite_code, invite_code_updated_at, last_seen, online_status, approval_status)\n                     VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP(), 1, 'pending')"
+                    "INSERT INTO users (username, password_hash, avatar_color, last_seen, online_status, approval_status)\n                     VALUES (?, ?, ?, UTC_TIMESTAMP(), 1, 'pending')"
                 );
-                $insert->execute([$username, $hash, avatarColor(), newInviteCode()]);
+                $insert->execute([$username, $hash, avatarColor()]);
                 $userId = (int) $pdo->lastInsertId();
                 break;
             } catch (PDOException $error) {
@@ -3247,21 +3191,6 @@ function actionRegister(PDO $pdo, array $data): never
         );
         $initialReads->execute([$userId]);
         rememberDeviceForUser($pdo, $userId, $username);
-        $inviteOwnerId = filter_var($_SESSION['invite_owner_id'] ?? null, FILTER_VALIDATE_INT);
-        if ($inviteOwnerId) {
-            // Kod hakkı yalnızca bir kez tüketilebilir; koşullu güncelleme aynı anda
-            // gelen iki kaydın ikisini birden içeri almayı engeller.
-            $consume = $pdo->prepare(
-                'UPDATE users SET invite_code_consumed_at = UTC_TIMESTAMP(), invite_code_consumed_by = ?
-                 WHERE id = ? AND invite_code_consumed_at IS NULL'
-            );
-            $consume->execute([$username, $inviteOwnerId]);
-            if ($consume->rowCount() !== 1) {
-                throw new ApiError(409, 'INVITE_ALREADY_USED', 'Bu davet kodu bir kişi tarafından kullanıldı. Kod sahibine saat başında yeni kod verilecek.', [
-                    'next_rotation_at' => nextHourIso(),
-                ]);
-            }
-        }
         $pdo->commit();
     } catch (Throwable $error) {
         if ($pdo->inTransaction()) {
@@ -3274,7 +3203,7 @@ function actionRegister(PDO $pdo, array $data): never
     $_SESSION['user_id'] = $userId;
     $_SESSION['session_version'] = 1;
     $_SESSION['last_touch'] = time();
-    unset($_SESSION['invite_verified_until'], $_SESSION['invite_owner_id'], $_SESSION['admin_authenticated_until']);
+    unset($_SESSION['admin_authenticated_until'], $_SESSION['blocked_user_id']);
     $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ?');
     $stmt->execute([$userId]);
     $createdUser = $stmt->fetch();
@@ -3290,7 +3219,7 @@ function actionRegister(PDO $pdo, array $data): never
 
 function actionLogin(PDO $pdo, array $data): never
 {
-    // Daha önce hesabı olan kullanıcılar güncelleme sonrası tekrar davetiye koduna zorlanmaz.
+    // Daha önce hesabı olan kullanıcılar bu sürümde yeniden kayda zorlanmaz.
     $username = validatedUsername($data['username'] ?? null);
     $password = is_string($data['password'] ?? null) ? $data['password'] : '';
     $key = rateKey('login', clientIp() . '|' . strtolower($username));
@@ -3327,7 +3256,7 @@ function actionLogin(PDO $pdo, array $data): never
         $_SESSION['user_id'] = (int) $user['id'];
         $_SESSION['session_version'] = (int) ($user['session_version'] ?? 1);
         $_SESSION['last_touch'] = time();
-        unset($_SESSION['invite_verified_until'], $_SESSION['admin_authenticated_until'], $_SESSION['blocked_user_id']);
+        unset($_SESSION['admin_authenticated_until'], $_SESSION['blocked_user_id']);
         rememberDeviceForUser($pdo, (int) $user['id'], $user['username']);
         issueRememberToken($pdo, (int) $user['id'], (int) ($user['session_version'] ?? 1));
         respond([
@@ -3364,7 +3293,7 @@ function actionLogin(PDO $pdo, array $data): never
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['session_version'] = (int) ($user['session_version'] ?? 1);
     $_SESSION['last_touch'] = time();
-    unset($_SESSION['invite_verified_until'], $_SESSION['admin_authenticated_until'], $_SESSION['blocked_user_id']);
+    unset($_SESSION['admin_authenticated_until'], $_SESSION['blocked_user_id']);
     $pdo->prepare('UPDATE users SET last_seen = UTC_TIMESTAMP(), online_status = 1, last_activity_counted_at = UTC_TIMESTAMP() WHERE id = ?')->execute([$user['id']]);
     rememberDeviceForUser($pdo, (int) $user['id'], $user['username']);
     issueRememberToken($pdo, (int) $user['id'], (int) ($user['session_version'] ?? 1));
@@ -3394,6 +3323,7 @@ function actionGetRooms(PDO $pdo): never
     closeSessionEarlyForReads('get_rooms');
     runMaintenanceSafely($pdo, 'messages_cleanup', 300, static function (PDO $database): void {
         cleanupExpiredMessages($database, 100);
+        cleanupExpiredForms($database, 100);
     });
     $userId = (int) $user['id'];
     $stmt = $pdo->prepare(
@@ -3436,6 +3366,7 @@ function actionGetMessages(PDO $pdo): never
     $room = roomExists($pdo, $roomId);
     runMaintenanceSafely($pdo, 'messages_cleanup', 300, static function (PDO $database): void {
         cleanupExpiredMessages($database, 100);
+        cleanupExpiredForms($database, 100);
     });
 
     if ((bool) $user['show_read_receipts']) {
@@ -3510,8 +3441,16 @@ function actionSendMessage(PDO $pdo, array $data): never
 {
     $user = requireUser($pdo);
     consumeRequestLimit($pdo, rateKey('message', (string) $user['id']), 20, 30);
-    $roomId = integerField($data['room_id'] ?? null, 'Oda');
+    // Oda 0 (Bilgi Odası) geçerli bir kimliktir; normal odalar 1+ olmalıdır.
+    $rawRoomId = filter_var($data['room_id'] ?? null, FILTER_VALIDATE_INT);
+    if ($rawRoomId === false || $rawRoomId < 0) {
+        throw new ApiError(422, 'VALIDATION_ERROR', 'Oda geçersiz.');
+    }
+    $roomId = (int) $rawRoomId;
     $room = roomExists($pdo, $roomId);
+    if ((int) ($room['id'] ?? -1) === INFO_ROOM_ID) {
+        throw new ApiError(422, 'INFO_ROOM_NO_CHAT', 'Bilgi Odası içerik odasıdır; burada sohbet mesajı gönderilemez.');
+    }
     $content = cleanText($data['message'] ?? '', 'Mesaj', 4000, false);
     $imagePath = storeUploadedImage();
     if ($content === '' && $imagePath === null) {
@@ -3843,27 +3782,6 @@ function actionChangePassword(PDO $pdo, array $data): never
     respond([
         'message' => 'Şifren değiştirildi. Diğer cihazlardaki oturumların kapatıldı.',
         'other_sessions_revoked' => true,
-    ]);
-}
-
-function actionGetMyInviteCode(PDO $pdo): never
-{
-    sessionRateGuard('invite', 20, 30);
-    $user = requireUser($pdo);
-    closeSessionEarlyForReads('get_my_invite_code');
-    rotateInviteCodes($pdo);
-    $stmt = $pdo->prepare('SELECT invite_code, invite_code_consumed_at, invite_code_consumed_by FROM users WHERE id = ?');
-    $stmt->execute([$user['id']]);
-    $row = $stmt->fetch() ?: [];
-    $consumedAt = $row['invite_code_consumed_at'] ?? null;
-    $available = $consumedAt === null;
-    // Hakkı dolan kod istemciye hiç gönderilmez; eski kod da artık geçerli değildir.
-    respond([
-        'invite_code' => $available ? ($row['invite_code'] ?? null) : null,
-        'available' => $available,
-        'used_by' => $available ? null : repairLegacyTurkishText($row['invite_code_consumed_by'] ?? null),
-        'used_at' => $available ? null : gmdate(DateTimeInterface::ATOM, strtotime($consumedAt . ' UTC')),
-        'next_rotation_at' => nextHourIso(),
     ]);
 }
 
@@ -4336,10 +4254,10 @@ function asraAiResponse(string $question, string $username, string $contextHint 
         return 'İyiyim, teşekkür ederim. Sana hangi konuda yardımcı olayım?';
     }
     if ($has(['kayit', 'kaydol', 'hesap ac', 'hesap olustur']) && $has(['nasil', 'nereden', 'yap', 'ac'])) {
-        return 'Kayıt için önce davetiye kodunu doğrula. Sonra Kaydol sekmesinde kullanıcı adını ve güçlü şifreni iki kez gir. Bu cihaz daha önce bir hesaba bağlandıysa güvenlik nedeniyle yeni hesap oluşturulamaz.';
+        return 'Kayıt için Kaydol sekmesinde kullanıcı adını ve güçlü şifreni iki kez gir. Davet kodu gerekmez; hesabın oluşturulur ve yönetici onayından sonra topluluğa katılabilirsin. Bu cihaz daha önce bir hesaba bağlandıysa güvenlik nedeniyle yeni hesap oluşturulamaz.';
     }
     if ($has(['giris', 'oturum']) && $has(['nasil', 'nereden', 'yap', 'ac'])) {
-        return 'Giriş için davetiye kodunu doğruladıktan sonra Giriş Yap sekmesine kullanıcı adını ve şifreni yaz. Şifren yetkili tarafından yenilendiyse eski şifre değil yalnızca yeni şifre geçerlidir.';
+        return 'Giriş için Giriş Yap sekmesine kullanıcı adını ve şifreni yaz. Şifren yetkili tarafından yenilendiyse eski şifre değil yalnızca yeni şifre geçerlidir. Hesabın onay bekliyorsa girişten sonra katılma nedeni ekranı açılır.';
     }
     if ($has(['kullanici adi', 'isim', 'nick']) && $has(['kullanimda', 'mevcut', 'alamiyorum', 'degis', 'degistir'])) {
         return 'Kullanıcı adları benzersizdir. Başkasında olan veya silinmiş hesaba ait adı alamazsın. Kendi kullanıcı adını Profilim ekranından 30 günde bir değiştirebilirsin.';
@@ -4973,84 +4891,16 @@ function actionAdminAdjustCoins(PDO $pdo, array $data): never
     respond(['message' => $messages[$mode], 'user' => publicUser($fresh), 'previous_balance' => $previous, 'new_balance' => coinAmount($fresh['aa_coins'] ?? 0)]);
 }
 
-function actionAdminResetInviteCode(PDO $pdo, array $data): never
-{
-    requireAdmin($pdo);
-    $userId = integerField($data['user_id'] ?? null, 'Kullanıcı');
-    $exists = $pdo->prepare("SELECT approval_status FROM users WHERE id = ?");
-    $exists->execute([$userId]);
-    $approval = $exists->fetchColumn();
-    if ($approval === false) {
-        throw new ApiError(404, 'USER_NOT_FOUND', 'Kullanıcı bulunamadı.');
-    }
-    if ($approval === 'pending') {
-        throw new ApiError(409, 'APPROVAL_PENDING', 'Bu hesap henüz yönetici onayı bekliyor; onaylanmadan ban veya hesap işlemi yapılamaz.');
-    }
-    for ($attempt = 0; $attempt < 5; $attempt++) {
-        try {
-            $stmt = $pdo->prepare(
-                'UPDATE users
-                 SET invite_code = ?, invite_code_updated_at = UTC_TIMESTAMP(), invite_reset_notice_at = UTC_TIMESTAMP(),
-                     invite_code_consumed_at = NULL, invite_code_consumed_by = NULL
-                 WHERE id = ?'
-            );
-            $stmt->execute([newInviteCode(), $userId]);
-            break;
-        } catch (PDOException $error) {
-            if ((string) $error->getCode() !== '23000' || $attempt === 4) throw $error;
-        }
-    }
-    respond(['message' => 'Kullanıcının davet kodu sıfırlandı.']);
-}
-
 /**
  * Yetkili panel "Kod" bölümü — durum: aktif kod + anahtar durumu.
  * Kod kapalıyken değeri hiç gösterilmez (geçersizdir zaten).
  */
-function actionAdminAccessCodeStatus(PDO $pdo): never
-{
-    requireAdmin($pdo);
-    sessionRateGuard('admin_access_code', 30, 30);
-    closeSessionEarlyForReads('admin_access_code_status');
-    $state = openCodeState($pdo);
-    respond([
-        'code' => $state['enabled'] ? $state['code'] : '',
-        'enabled' => $state['enabled'],
-        'message' => $state['enabled']
-            ? 'Kod aktif: bu kodu giren herkes sınırsız şekilde katılabilir.'
-            : 'Kod kapalı: kodla giriş yapılamaz. Açtığınızda otomatik yeni kod üretilir.',
-    ]);
-}
-
 /**
  * Yetkili panel "Kod" bölümü — aç/kapat anahtarı.
  * AÇ: otomatik YENİ kod üretilir ve aktif olur (sınırsız erişim kodu).
  * KAPAT: kod geçersiz olur ve kayıttan silinir; tekrar açılınca eski kod
  * GEÇERSİZ kalır, taze kod üretilir.
  */
-function actionAdminSetAccessCode(PDO $pdo, array $data): never
-{
-    $admin = requireAdmin($pdo);
-    consumeRequestLimit($pdo, rateKey('admin_set_access_code', (string) $admin['id']), 20, 3600);
-    $raw = $data['enabled'] ?? null;
-    $enabled = in_array($raw, [true, 1, '1', 'true', 'on', 'açık'], true);
-    if ($enabled) {
-        setPlatformSetting($pdo, OPEN_CODE_SETTING, generateOpenCode());
-        setPlatformSetting($pdo, OPEN_CODE_ENABLED_SETTING, '1');
-    } else {
-        setPlatformSetting($pdo, OPEN_CODE_ENABLED_SETTING, '0');
-        setPlatformSetting($pdo, OPEN_CODE_SETTING, '');
-    }
-    $state = openCodeState($pdo);
-    respond([
-        'message' => $enabled
-            ? 'Kod aktifleştirildi: yeni kod üretildi.'
-            : 'Kod kapatıldı: kodla giriş artık yapılamaz.',
-        'enabled' => $state['enabled'],
-        'code' => $state['enabled'] ? $state['code'] : '',
-    ]);
-}
-
 function createApprovedWelcomeMessage(PDO $pdo, string $username): void
 {
     $roomId = (int) $pdo->query("SELECT id FROM rooms WHERE name = 'Asra Genel' LIMIT 1")->fetchColumn();
@@ -5142,7 +4992,7 @@ function actionHealth(): never
 {
     $dsn = envValue(
         'ASRA_DB_DSN',
-        'mysql:host=sql303.infinityfree.com;port=3306;dbname=if0_42805855_asra;charset=utf8mb4'
+        ''
     );
     $report = [
         'ok' => true,
@@ -5161,7 +5011,7 @@ function actionHealth(): never
         // "Sunucu şu anda yoğun" mesajına çevirir, oysa teşhis için gerçek
         // neden (erişim reddi, çözümlenemeyen sunucu adı, yanlış veritabanı)
         // görünmelidir.
-        $pdo = new PDO($dsn, envValue('ASRA_DB_USER', 'if0_42805855'), envValue('ASRA_DB_PASSWORD', 'SDspuzgAn17CUg'), [
+        $pdo = new PDO($dsn, envValue('ASRA_DB_USER', ''), envValue('ASRA_DB_PASSWORD', ''), [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_TIMEOUT => 8,
@@ -5379,15 +5229,1080 @@ function actionHeartbeat(PDO $pdo): never
     ]);
 }
 
+// ============================================================================
+//  BİLGİ ODASI + ŞİKAYET SİSTEMİ — sunucu eylemleri (auth.php gövdesine
+//  gömülür). Bilgi Odası (oda id 0): haber (otomatik RSS + panel), kaynaklar,
+//  dersler, çalışma kağıtları, formlar (beğeni + yorum) ve oda beğenisi.
+//  Şikayet: tüm sohbet mesajları + form + form yorumları; günde 5; yönetim
+//  sekmesi (listele/reddet/ban için kullanıcıya git).
+// ============================================================================
+
+// ---------- yardımcılar ----------
+/** Temiz isteğe bağlı metin: null/eksik -> '' (cleanText null'da hata fırlatır). */
+function infoText(array $data, string $key, string $label, int $max, bool $required = false): string
+{
+    $value = $data[$key] ?? null;
+    if ($value === null) {
+        if ($required) {
+            throw new ApiError(422, 'VALIDATION_ERROR', $label . ' boş bırakılamaz.');
+        }
+        return '';
+    }
+    return cleanText($value, $label, $max, $required);
+}
+
+// ---------- platform ayar deposu (site_settings) ----------
+function infoSettingsAll(PDO $pdo): array
+{
+    static $cache = null;
+    if ($cache !== null) {
+        return $cache;
+    }
+    $rows = [];
+    try {
+        foreach ($pdo->query('SELECT setting_key, setting_value FROM site_settings') as $row) {
+            $rows[(string) $row['setting_key']] = (string) ($row['setting_value'] ?? '');
+        }
+    } catch (Throwable $error) {
+        error_log('[info] site_settings okuma hatası: ' . $error->getMessage());
+    }
+    $cache = $rows;
+    return $cache;
+}
+
+function infoSetting(PDO $pdo, string $key, string $default = ''): string
+{
+    $all = infoSettingsAll($pdo);
+    $value = (string) ($all[$key] ?? '');
+    return $value === '' ? $default : $value;
+}
+
+function infoSetSetting(PDO $pdo, string $key, string $value): void
+{
+    $stmt = $pdo->prepare(
+        'INSERT INTO site_settings (setting_key, setting_value) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+    );
+    $stmt->execute([$key, $value]);
+}
+
+/** UTC tarihini ISO 8601 yapar; boşsa null döner. */
+function infoIso(?string $value): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+    $stamp = strtotime($value . ' UTC');
+    return $stamp ? gmdate(DateTimeInterface::ATOM, $stamp) : null;
+}
+
+function infoFeedUrls(PDO $pdo): array
+{
+    $raw = infoSetting($pdo, 'feed_urls', '');
+    if ($raw === '') {
+        $raw = envValue('ASRA_INFO_FEED_URLS', '');
+    }
+    if ($raw === '') {
+        $raw = DEFAULT_INFO_FEED_URLS;
+    }
+    $lines = preg_split('/[\r\n,]+/', $raw) ?: [];
+    $urls = [];
+    foreach ($lines as $line) {
+        $url = trim((string) $line);
+        if ($url === '') {
+            continue;
+        }
+        $parts = parse_url($url);
+        if ($parts && in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true) && isset($parts['host'])) {
+            $urls[] = $url;
+        }
+    }
+    return array_values(array_unique($urls));
+}
+
+function infoFetchUrlText(string $url): string
+{
+    $userAgent = 'AsraChat-InfoBot/1.0 (+bilgi odası haber akışı)';
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => INFO_FEED_HTTP_TIMEOUT,
+            CURLOPT_CONNECTTIMEOUT => INFO_FEED_HTTP_TIMEOUT,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 4,
+            CURLOPT_USERAGENT => $userAgent,
+            CURLOPT_ENCODING => '',
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $body = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = (string) curl_error($ch);
+        curl_close($ch);
+        if ($body !== false && $code >= 200 && $code < 300) {
+            return (string) $body;
+        }
+        throw new RuntimeException('HTTP ' . $code . ' ' . $error);
+    }
+    $context = stream_context_create(['http' => [
+        'method' => 'GET',
+        'timeout' => INFO_FEED_HTTP_TIMEOUT,
+        'header' => "User-Agent: " . $userAgent . "\r\nAccept: */*\r\n",
+        'follow_location' => 1,
+        'max_redirects' => 4,
+    ]]);
+    $body = @file_get_contents($url, false, $context);
+    if ($body === false) {
+        throw new RuntimeException('Kaynak okunamadı: ' . $url);
+    }
+    return $body;
+}
+
+/**
+ * RSS 2.0 / Atom beslemesini ayrıştırır; hiçbir uzantı yoksa regex yedeği.
+ * Dönen her öğe: title, link, summary, published (UTC Y-m-d H:i:s ya da null), guid.
+ */
+function infoParseFeed(string $xml, string $url): array
+{
+    $items = [];
+    $sourceHost = (string) (parse_url($url, PHP_URL_HOST) ?: 'besleme');
+    $guidBase = $sourceHost;
+    $push = static function (array $item) use (&$items, $guidBase): void {
+        $title = trim((string) ($item['title'] ?? ''));
+        $link = trim((string) ($item['link'] ?? ''));
+        if ($title === '' && $link === '') {
+            return;
+        }
+        $rawGuid = trim((string) ($item['guid'] ?? ''));
+        if ($rawGuid === '') {
+            $rawGuid = $link !== '' ? $link : $guidBase . '|' . $title;
+        }
+        $items[] = [
+            'title' => mb_substr($title, 0, 300),
+            'link' => mb_substr($link, 0, 700),
+            'summary' => mb_substr((string) ($item['summary'] ?? ''), 0, 4000),
+            'published' => isset($item['published']) && $item['published'] !== '' ? gmdate('Y-m-d H:i:s', (int) strtotime((string) $item['published'])) : null,
+            'guid' => $guidBase . '|' . $rawGuid,
+        ];
+    };
+    $extractText = static function ($node): string {
+        $text = trim(preg_replace('/\s+/u', ' ', strip_tags((string) $node)) ?? '');
+        return html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    };
+
+    if (function_exists('simplexml_load_string')) {
+        $previous = libxml_use_internal_errors(true);
+        $feed = simplexml_load_string($xml);
+        if ($feed !== false) {
+            // Atom: <entry>
+            if (isset($feed->entry)) {
+                foreach ($feed->entry as $entry) {
+                    $push([
+                        'title' => $extractText($entry->title),
+                        'link' => isset($entry->link['href']) ? trim((string) $entry->link['href']) : '',
+                        'summary' => isset($entry->summary) ? $extractText($entry->summary) : (isset($entry->content) ? $extractText($entry->content) : ''),
+                        'published' => isset($entry->published) ? trim((string) $entry->published) : (isset($entry->updated) ? trim((string) $entry->updated) : ''),
+                        'guid' => isset($entry->id) ? trim((string) $entry->id) : '',
+                    ]);
+                }
+            }
+            // RSS 2.0: <channel><item>
+            if (isset($feed->channel->item)) {
+                foreach ($feed->channel->item as $item) {
+                    $summary = isset($item->description) ? $extractText($item->description) : '';
+                    if ($summary === '' && isset($item->children('http://purl.org/rss/1.0/modules/content/')->encoded)) {
+                        $summary = $extractText($item->children('http://purl.org/rss/1.0/modules/content/')->encoded);
+                    }
+                    $push([
+                        'title' => $extractText($item->title),
+                        'link' => isset($item->link) ? trim((string) $item->link) : '',
+                        'summary' => $summary,
+                        'published' => isset($item->pubDate) ? trim((string) $item->pubDate) : '',
+                        'guid' => isset($item->guid) ? trim((string) $item->guid) : '',
+                    ]);
+                }
+            }
+        }
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+    }
+    if ($items === [] && class_exists('DOMDocument')) {
+        $document = new DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        if (@$document->loadXML($xml)) {
+            $xpath = new DOMXPath($document);
+            $xpath->registerNamespace('atom', 'http://www.w3.org/2005/Atom');
+            $xpath->registerNamespace('content', 'http://purl.org/rss/1.0/modules/content/');
+            foreach ($xpath->query('//item') as $node) {
+                $pick = static function (string $name) use ($xpath, $node): string {
+                    $found = $xpath->query('.//' . $name, $node);
+                    return $found && $found->length > 0 ? trim($found->item(0)->textContent) : '';
+                };
+                $summary = $pick('description');
+                if ($summary === '') {
+                    $found = $xpath->query('.//content:encoded', $node);
+                    if ($found && $found->length > 0) {
+                        $summary = trim($found->item(0)->textContent);
+                    }
+                }
+                $push([
+                    'title' => $pick('title'),
+                    'link' => $pick('link'),
+                    'summary' => $summary,
+                    'published' => $pick('pubDate'),
+                    'guid' => $pick('guid'),
+                ]);
+            }
+            foreach ($xpath->query('//atom:entry') as $node) {
+                $pick = static function (string $name) use ($xpath, $node): string {
+                    $found = $xpath->query('.//atom:' . $name, $node);
+                    return $found && $found->length > 0 ? trim($found->item(0)->textContent) : '';
+                };
+                $push([
+                    'title' => $pick('title'),
+                    'link' => '',
+                    'summary' => $pick('summary'),
+                    'published' => $pick('published'),
+                    'guid' => $pick('id'),
+                ]);
+            }
+        }
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+    }
+    if ($items === [] && preg_match_all('#<item\b[^>]*>(.*?)</item>#si', $xml, $matches)) {
+        foreach ($matches[1] as $block) {
+            $pick = static function (string $name) use ($block): string {
+                return preg_match('#<' . $name . '[^>]*>(.*?)</' . $name . '>#si', $block, $m) ? trim(strip_tags($m[1])) : '';
+            };
+            $push([
+                'title' => $pick('title'),
+                'link' => $pick('link'),
+                'summary' => $pick('description'),
+                'published' => $pick('pubDate'),
+                'guid' => $pick('guid'),
+            ]);
+        }
+    }
+    return $items;
+}
+
+/** Besleme güncellemesini koşturur; asla istek öldürmez, durumu ayar deposuna yazar. */
+function infoFeedRefresh(PDO $pdo, bool $force): array
+{
+    $all = infoSettingsAll($pdo);
+    $runningAt = (string) ($all['feed_running_at'] ?? '');
+    if ($runningAt !== '' && !$force) {
+        $runningStamp = strtotime($runningAt . ' UTC');
+        if ($runningStamp !== false && (time() - $runningStamp) < 150) {
+            return ['ok' => true, 'skipped' => true];
+        }
+    }
+    infoSetSetting($pdo, 'feed_running_at', gmdate('Y-m-d H:i:s'));
+    $urls = infoFeedUrls($pdo);
+    $inserted = 0;
+    $updated = 0;
+    $sourcesOk = 0;
+    $firstError = '';
+    if ($urls === []) {
+        $firstError = 'Kaynak adresi tanımlı değil.';
+    }
+    foreach ($urls as $url) {
+        try {
+            $parsed = infoParseFeed(infoFetchUrlText($url), $url);
+            $upsert = $pdo->prepare(
+                'INSERT INTO info_items (section, source, feed_key, title, content, link, author, published_at, updated_at)
+                 VALUES (\'haber\', \'feed\', ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())
+                 ON DUPLICATE KEY UPDATE
+                   title = VALUES(title), content = VALUES(content), link = VALUES(link),
+                   author = VALUES(author), published_at = VALUES(published_at), updated_at = UTC_TIMESTAMP()'
+            );
+            foreach ($parsed as $item) {
+                $key = md5((string) $item['guid']);
+                $upsert->execute([
+                    $key,
+                    $item['title'],
+                    $item['summary'] === '' ? null : $item['summary'],
+                    $item['link'] === '' ? null : $item['link'],
+                    (string) (parse_url($url, PHP_URL_HOST) ?: 'besleme'),
+                    $item['published'],
+                ]);
+                if ($upsert->rowCount() === 1) {
+                    $inserted++;
+                } else {
+                    $updated++;
+                }
+            }
+            if ($parsed !== []) {
+                $sourcesOk++;
+            }
+        } catch (Throwable $error) {
+            if ($firstError === '') {
+                $firstError = mb_substr($error->getMessage(), 0, 300);
+            }
+            error_log('[info] besleme hatası: ' . $error->getMessage());
+        }
+    }
+    // Eski besleme kayıtları sınırlanır (90 günden eskiyse düşer).
+    try {
+        $pdo->exec("DELETE FROM info_items WHERE source = 'feed' AND COALESCE(published_at, created_at) < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 90 DAY)");
+    } catch (Throwable $error) {
+        error_log('[info] besleme budama hatası: ' . $error->getMessage());
+    }
+    $now = gmdate('Y-m-d H:i:s');
+    infoSetSetting($pdo, 'feed_last_at', $now);
+    $ok = $sourcesOk > 0 && $firstError === '';
+    infoSetSetting($pdo, 'feed_last_ok', $ok ? '1' : '0');
+    if ($firstError !== '') {
+        infoSetSetting($pdo, 'feed_last_error', $firstError);
+    } else {
+        $stmt = $pdo->prepare("DELETE FROM site_settings WHERE setting_key = 'feed_last_error'");
+        $stmt->execute();
+    }
+    $cleanup = $pdo->prepare("DELETE FROM site_settings WHERE setting_key = 'feed_running_at'");
+    $cleanup->execute();
+    return [
+        'ok' => $ok,
+        'urls' => count($urls),
+        'sources_ok' => $sourcesOk,
+        'inserted' => $inserted,
+        'updated' => $updated,
+        'at' => infoIso($now),
+        'error' => $firstError === '' ? null : $firstError,
+    ];
+}
+
+/** 24 saat geçmişse tembel tazeleme (okuma ucu tetikler; hata okumayı etkilemez). */
+function maybeInfoFeedRefresh(PDO $pdo): void
+{
+    if (infoSetting($pdo, 'feed_auto', '1') === '0') {
+        return;
+    }
+    $all = infoSettingsAll($pdo);
+    $lastAt = (string) ($all['feed_last_at'] ?? '');
+    if ($lastAt !== '') {
+        $lastStamp = strtotime($lastAt . ' UTC');
+        if ($lastStamp !== false && (time() - $lastStamp) < INFO_FEED_REFRESH_SECONDS) {
+            return;
+        }
+    }
+    try {
+        infoFeedRefresh($pdo, false);
+    } catch (Throwable $error) {
+        error_log('[info] tembel tazeleme hatası: ' . $error->getMessage());
+    }
+}
+
+function infoValidateSection(string $section): string
+{
+    if (!in_array($section, ['haber', 'kaynak', 'ders', 'calisma'], true)) {
+        throw new ApiError(422, 'INVALID_SECTION', 'Bölüm tanınmadı.');
+    }
+    return $section;
+}
+
+function infoItemPublic(array $row): array
+{
+    return [
+        'id' => (int) $row['id'],
+        'section' => $row['section'],
+        'source' => $row['source'],
+        'title' => repairLegacyTurkishText($row['title']),
+        'content' => $row['content'] !== null ? repairLegacyTurkishText($row['content']) : null,
+        'link' => $row['link'],
+        'author' => $row['author'],
+        'published_at' => infoIso($row['published_at']),
+        'updated_at' => infoIso($row['updated_at']),
+    ];
+}
+
+/**
+ * Kaynak / Ders / Çalışma bölümleri için gömülü rehber içeriği.
+ *
+ * Bu bölümlerin besleme kaynağı yoktur; veritabanı boşken sekmeler "boş"
+ * görünürdü. İlk ziyarette bölüm tamamen boşsa güvenilir, resmî/eğitici
+ * kaynaklara işaret eden Türkçe rehber maddeleri tohumlanır ve normal
+ * listeyle harmanlanır (source = 'builtin'). Bir bölüm bir kez tohumlanır
+ * (site_settings'e işlenir); yönetici maddeleri tek tek silerse geri gelmez.
+ * Besleme budaması yalnızca source = 'feed' satırlarını sildiğinden bu
+ * maddeler kalıcıdır.
+ */
+/**
+ * Kaynak / Ders / Çalışma bölümleri için gömülü rehber içeriği.
+ *
+ * Bu bölümlerin besleme kaynağı yoktur; veritabanı boşken sekmeler "boş"
+ * görünürdü. İlk ziyarette bölüm tamamen boşsa güvenilir, resmî/eğitici
+ * kaynaklara işaret eden Türkçe rehber maddeleri tohumlanır ve normal
+ * listeyle harmanlanır (source = 'builtin'). Bir bölüm bir kez tohumlanır
+ * (site_settings'e işlenir); yönetici maddeleri tek tek silerse geri gelmez.
+ * Besleme budaması yalnızca source = 'feed' satırlarını sildiğinden bu
+ * maddeler kalıcıdır.
+ */
+function seedBuiltinInfoItems(PDO $pdo, string $section): void
+{
+    if (infoSetting($pdo, 'builtin_seed_' . $section, '') === '1') {
+        return;
+    }
+    $count = (int) $pdo->query(
+        "SELECT COUNT(*) FROM info_items WHERE section = " . $pdo->quote($section)
+    )->fetchColumn();
+    if ($count > 0) {
+        return; // Bölüm zaten dolu: kullanıcı/içerik karışmasın.
+    }
+    $rows = [];
+    if ($section === 'kaynak') {
+        $rows = [
+            ['EBA - Resmî Eğitim Platformu', 'MEB\'in tüm kademeler için ders içerikleri, video dersler, soru bankaları ve yardımcı kaynakları tek çatı altında sunduğu resmî platform. Millî Eğitim Bakanlığı\'nın güvenilir kaynağıdır.', 'https://www.eba.gov.tr', 0],
+            ['Khan Academy Türkçe', 'İlkokuldan üniversiteye matematik, fen, bilgisayar ve daha fazlası için ücretsiz, bilimsel temelli video anlatımlar ve alıştırmalar. Tamamen ücretsiz ve herkese açıktır.', 'https://tr.khanacademy.org', 1],
+            ['OGM Materyal - Ortaöğretim Ders Materyalleri', 'MEB\'in lise kademesi için hazırladığı ders anlatım sunuları, etkinlikler ve ölçme araçları. 9-12. sınıf müfredatına birebir uyumludur.', 'https://ogmmateryal.eba.gov.tr', 2],
+            ['TÜBİTAK Bilim Genç', 'Bilim insanı adayları için güncel bilim haberleri, deneyler, yarışmalar ve proje rehberleri. Türkiye Bilimsel ve Teknolojik Araştırma Kurumu\'nun gençlik platformudur.', 'https://bilimgenc.tubitak.gov.tr', 3],
+            ['NASA - Bilim ve Uzay Haberleri', 'Uzay araştırmaları, astronomi ve bilim haberlerinin birincil küresel kaynağı. İngilizce içerikler pratik yapmak için de idealdir.', 'https://www.nasa.gov', 4],
+            ['Ankara Üniversitesi Açık Ders Malzemeleri', 'Üniversite düzeyinde binlerce dersin not, sunum ve kaynaklarına ücretsiz erişim. Araştırma ve ödevler için akademik ölçekte güvenilir içerik.', 'https://acikders.ankara.edu.tr', 5],
+        ];
+    } elseif ($section === 'ders') {
+        $rows = [
+            ['Khan Academy Türkçe - Konu Anlatımları', 'Müfredata uygun matematik, fen bilimleri ve daha fazlası için adım adım video konu anlatımları; her konunun ardından çözümlü alıştırmalarla pekiştirme.', 'https://tr.khanacademy.org', 0],
+            ['EBA - Ders İçerikleri ve Video Dersler', 'Sınıf ve ders seçerek ilerleyebileceğin MEB onaylı ders içerikleri, canlı ders arşivleri ve öğretmen rehberleri.', 'https://www.eba.gov.tr', 1],
+            ['OGM Materyal - Ders Anlatım Sunuları', 'Lise müfredatının her ünitesi için MEB\'in resmî anlatım sunuları; yazılılara ve YKS\'ye hazırlıkta not çıkarmak için birebir.', 'https://ogmmateryal.eba.gov.tr', 2],
+            ['Ankara Üniversitesi Açık Ders Malzemeleri', 'Üniversite hazırlığında ileri konular için açık ders notları ve akademik kaynaklar; özellikle araştırma ödevlerinde güçlü bir yardımcı.', 'https://acikders.ankara.edu.tr', 3],
+            ['TÜBİTAK Bilim Genç - Meraklısına Bilim', 'Ders dışı okumalarla genel kültürü ve bilimsel merakı besleyen güncel makaleler, belgesel önerileri ve deney videoları.', 'https://bilimgenc.tubitak.gov.tr', 4],
+        ];
+    } elseif ($section === 'calisma') {
+        $rows = [
+            ['MEB ÖDSGM - Kazanım Kavrama Testleri', 'Millî Eğitim Bakanlığı\'nın her ünite için yayımladığı kazanım kavrama testleri; LGS ve yazılılara hazırlıkta resmî soru kaynağı.', 'https://odsgm.meb.gov.tr', 0],
+            ['EBA - Çalışma Kitapları ve Yardımcı Kaynaklar', 'MEB\'in destekleme ve yetiştirme kursları ile uyumlu çalışma kitapları, etkinlik dosyaları ve örnek soru paketleri.', 'https://www.eba.gov.tr', 1],
+            ['OGM Materyal - Çalışma Kağıtları', 'Lise düzeyinde ünite sonu tekrar çalışma kağıtları ve etkinlikler; yazılı öncesi hızlı tekrar için düzenli aralıklarla güncellenir.', 'https://ogmmateryal.eba.gov.tr', 2],
+            ['Khan Academy Türkçe - Alıştırma Setleri', 'Konu anlatımından hemen sonra çözebileceğin anında geri bildirim veren ücretsiz alıştırma setleri; eksiklerini otomatik takip eder.', 'https://tr.khanacademy.org', 3],
+            ['TÜBİTAK Bilim Genç - Etkinlik ve Deneyler', 'Evde güvenle yapılabilecek deneyler ve bilim etkinlikleri; el becerisi ve gözlem gücünü geliştiren uygulamalı çalışmalar.', 'https://bilimgenc.tubitak.gov.tr', 4],
+        ];
+    }
+    if ($rows === []) {
+        return;
+    }
+    // Idempotent tohumlama: eş zamanlı iki ilk-ziyaret bile aynı maddeyi
+    // iki kez ekleyemez (bölüm+başlık aynı olan builtin satır varsa atlanır).
+    $insert = $pdo->prepare(
+        'INSERT INTO info_items (section, source, title, content, link, author, published_at, created_at)
+         SELECT ?, ?, ?, ?, ?, ?, DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? SECOND), UTC_TIMESTAMP()
+         WHERE NOT EXISTS (
+             SELECT 1 FROM info_items WHERE source = ? AND section = ? AND title = ?
+         )'
+    );
+    $done = 0;
+    foreach ($rows as $row) {
+        [$title, $content, $link, $offsetMin] = $row;
+        $insert->execute([
+            $section,
+            'builtin',
+            $title,
+            $content,
+            $link,
+            (string) (parse_url($link, PHP_URL_HOST) ?: 'rehber'),
+            (int) $offsetMin * 60,
+            'builtin',
+            $section,
+            $title,
+        ]);
+        $done += $insert->rowCount();
+    }
+    if ($done > 0) {
+        infoSetSetting($pdo, 'builtin_seed_' . $section, '1');
+    }
+}
+
+// ============================================================================
+//  OKUMA EYLEMLERİ (GET)
+// ============================================================================
+
+function actionInfoItems(PDO $pdo): never
+{
+    sessionRateGuard('info_items', 60, 30);
+    requireUser($pdo);
+    closeSessionEarlyForReads('info_items');
+    $section = infoValidateSection(cleanText($_GET['section'] ?? 'haber', 'Bölüm', 20, false) ?: 'haber');
+    if ($section === 'haber') {
+        maybeInfoFeedRefresh($pdo);
+    } else {
+        seedBuiltinInfoItems($pdo, $section);
+    }
+    $stmt = $pdo->prepare(
+        'SELECT id, section, source, title, content, link, author, published_at, updated_at, created_at
+         FROM info_items WHERE section = ?
+         ORDER BY COALESCE(published_at, created_at) DESC, id DESC LIMIT 80'
+    );
+    $stmt->execute([$section]);
+    $items = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $items[] = infoItemPublic($row);
+    }
+    $payload = ['items' => $items];
+    if ($section === 'haber') {
+        $all = infoSettingsAll($pdo);
+        $urls = infoFeedUrls($pdo);
+        $lastAt = (string) ($all['feed_last_at'] ?? '');
+        $feedItems = (int) ($pdo->query("SELECT COUNT(*) FROM info_items WHERE section = 'haber' AND source = 'feed'")->fetchColumn() ?: 0);
+        $nextAt = '';
+        if ($lastAt !== '') {
+            $nextStamp = strtotime($lastAt . ' UTC') + INFO_FEED_REFRESH_SECONDS;
+            $nextAt = gmdate(DateTimeInterface::ATOM, $nextStamp);
+        }
+        $payload['meta'] = [
+            'auto' => infoSetting($pdo, 'feed_auto', '1') === '1',
+            'last_at' => infoIso($lastAt),
+            'next_at' => $nextAt !== '' ? $nextAt : null,
+            'last_ok' => ((string) ($all['feed_last_ok'] ?? '1')) === '1',
+            'last_error' => $all['feed_last_error'] ?? null,
+            'sources' => count($urls),
+            'feed_items' => $feedItems,
+        ];
+    }
+    respond($payload);
+}
+
+function actionInfoForms(PDO $pdo): never
+{
+    sessionRateGuard('info_forms', 60, 30);
+    $user = requireUser($pdo);
+    closeSessionEarlyForReads('info_forms');
+    $stmt = $pdo->query(
+        'SELECT f.id, f.author_id, f.title, f.body, f.created_at, u.username
+         FROM info_forms f JOIN users u ON u.id = f.author_id
+         WHERE f.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)
+         ORDER BY f.id DESC LIMIT 80'
+    );
+    $forms = [];
+    $likedStmt = $pdo->prepare('SELECT 1 FROM info_form_likes WHERE form_id = ? AND user_id = ?');
+    $likesStmt = $pdo->prepare('SELECT COUNT(*) FROM info_form_likes WHERE form_id = ?');
+    $repliesStmt = $pdo->prepare('SELECT COUNT(*) FROM info_form_replies WHERE form_id = ?');
+    foreach ($stmt->fetchAll() as $row) {
+        $formId = (int) $row['id'];
+        $likesStmt->execute([$formId]);
+        $repliesStmt->execute([$formId]);
+        $likedStmt->execute([$formId, (int) $user['id']]);
+        $forms[] = [
+            'id' => $formId,
+            'author_id' => (int) $row['author_id'],
+            'author' => repairLegacyTurkishText($row['username']),
+            'title' => repairLegacyTurkishText($row['title']),
+            'body' => repairLegacyTurkishText($row['body']),
+            'created_at' => infoIso($row['created_at']),
+            'likes' => (int) $likesStmt->fetchColumn(),
+            'replies' => (int) $repliesStmt->fetchColumn(),
+            'liked' => (bool) $likedStmt->fetchColumn(),
+            'can_delete' => (int) $row['author_id'] === (int) $user['id'],
+        ];
+    }
+    respond(['forms' => $forms]);
+}
+
+/**
+ * Form, oda mesajlarıyla AYNI saklama politikasına tabidir
+ * (MESSAGE_RETENTION_HOURS). Vadesi dolan form "yok" sayılır: listelenmez,
+ * yorum/beğeni gibi etkileşimlere kapalıdır; temizlik görevi onu kısa süre
+ * içinde veritabanından kaldırır.
+ */
+function infoFormUsable(PDO $pdo, int $formId): void
+{
+    $stmt = $pdo->prepare(
+        'SELECT 1 FROM info_forms WHERE id = ? AND created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)'
+    );
+    $stmt->execute([$formId]);
+    if (!$stmt->fetchColumn()) {
+        throw new ApiError(404, 'FORM_NOT_FOUND', 'Form bulunamadı.');
+    }
+}
+
+function actionInfoFormReplies(PDO $pdo): never
+{
+    sessionRateGuard('info_forms', 60, 30);
+    requireUser($pdo);
+    closeSessionEarlyForReads('info_forms');
+    $formId = integerField($_GET['form_id'] ?? null, 'Form');
+    infoFormUsable($pdo, $formId);
+    $stmt = $pdo->prepare(
+        'SELECT r.id, r.form_id, r.author_id, r.content, r.created_at, u.username
+         FROM info_form_replies r JOIN users u ON u.id = r.author_id
+         WHERE r.form_id = ?
+           AND r.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)
+         ORDER BY r.id ASC LIMIT 200'
+    );
+    $stmt->execute([$formId]);
+    $likedStmt = $pdo->prepare('SELECT 1 FROM info_form_reply_likes WHERE reply_id = ? AND user_id = ?');
+    $likesStmt = $pdo->prepare('SELECT COUNT(*) FROM info_form_reply_likes WHERE reply_id = ?');
+    $replies = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $replyId = (int) $row['id'];
+        $likesStmt->execute([$replyId]);
+        $likedStmt->execute([$replyId, (int) $user['id']]);
+        $replies[] = [
+            'id' => $replyId,
+            'form_id' => (int) $row['form_id'],
+            'author_id' => (int) $row['author_id'],
+            'author' => repairLegacyTurkishText($row['username']),
+            'content' => repairLegacyTurkishText($row['content']),
+            'created_at' => infoIso($row['created_at']),
+            'likes' => (int) $likesStmt->fetchColumn(),
+            'liked' => (bool) $likedStmt->fetchColumn(),
+        ];
+    }
+    respond(['replies' => $replies]);
+}
+
+function actionComplaintQuota(PDO $pdo): never
+{
+    $user = requireUser($pdo);
+    closeSessionEarlyForReads('complaint_quota');
+    $used = infoComplaintCountToday($pdo, (int) $user['id']);
+    respond(['used' => $used, 'remaining' => max(0, COMPLAINT_DAILY_LIMIT - $used), 'limit' => COMPLAINT_DAILY_LIMIT]);
+}
+
+function infoComplaintCountToday(PDO $pdo, int $userId): int
+{
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM complaints WHERE reporter_id = ? AND created_at >= CONCAT(CURDATE(), ' 00:00:00')"
+    );
+    $stmt->execute([$userId]);
+    return (int) ($stmt->fetchColumn() ?: 0);
+}
+
+// ============================================================================
+//  YAZMA EYLEMLERİ (POST) — Bilgi Odası formlar ve oda beğenisi
+// ============================================================================
+
+function actionInfoFormCreate(PDO $pdo, array $data): never
+{
+    $user = requireUser($pdo);
+    sessionRateGuard('info_form_create', 12, 60);
+    $title = infoText($data, 'title', 'Başlık', 120, true);
+    $body = infoText($data, 'body', 'İçerik', 4000, false);
+    if ($body === '') {
+        throw new ApiError(422, 'EMPTY_FORM', 'Form içeriği boş olamaz.');
+    }
+    $stmt = $pdo->prepare('INSERT INTO info_forms (author_id, title, body) VALUES (?, ?, ?)');
+    $stmt->execute([(int) $user['id'], $title, $body]);
+    respond(['message' => 'Form yayınlandı.', 'form_id' => (int) $pdo->lastInsertId()], 201);
+}
+
+function actionInfoFormDelete(PDO $pdo, array $data): never
+{
+    $user = requireUser($pdo);
+    $formId = integerField($data['form_id'] ?? null, 'Form');
+    $stmt = $pdo->prepare('SELECT author_id FROM info_forms WHERE id = ?');
+    $stmt->execute([$formId]);
+    $authorId = $stmt->fetchColumn();
+    if ($authorId === false) {
+        throw new ApiError(404, 'FORM_NOT_FOUND', 'Form bulunamadı.');
+    }
+    if ((int) $authorId !== (int) $user['id']) {
+        throw new ApiError(403, 'FORM_NOT_OWNER', 'Yalnızca kendi formunuzu silebilirsiniz.');
+    }
+    $pdo->prepare('DELETE FROM info_form_likes WHERE form_id = ?')->execute([$formId]);
+    $pdo->prepare('DELETE FROM info_form_replies WHERE form_id = ?')->execute([$formId]);
+    $pdo->prepare('DELETE FROM info_forms WHERE id = ?')->execute([$formId]);
+    respond(['message' => 'Form silindi.']);
+}
+
+function actionInfoFormLike(PDO $pdo, array $data): never
+{
+    $user = requireUser($pdo);
+    sessionRateGuard('info_form_like', 30, 60);
+    $formId = integerField($data['form_id'] ?? null, 'Form');
+    infoFormUsable($pdo, $formId);
+    $remove = $pdo->prepare('DELETE FROM info_form_likes WHERE form_id = ? AND user_id = ?');
+    $remove->execute([$formId, (int) $user['id']]);
+    $liked = false;
+    if ($remove->rowCount() === 0) {
+        $add = $pdo->prepare('INSERT IGNORE INTO info_form_likes (form_id, user_id) VALUES (?, ?)');
+        $add->execute([$formId, (int) $user['id']]);
+        $liked = $add->rowCount() > 0;
+    }
+    $count = $pdo->prepare('SELECT COUNT(*) FROM info_form_likes WHERE form_id = ?');
+    $count->execute([$formId]);
+    respond(['liked' => $liked, 'likes' => (int) $count->fetchColumn()]);
+}
+
+function actionInfoFormReply(PDO $pdo, array $data): never
+{
+    $user = requireUser($pdo);
+    sessionRateGuard('info_form_reply', 20, 60);
+    $formId = integerField($data['form_id'] ?? null, 'Form');
+    $content = cleanText($data['content'] ?? null, 'Mesaj', 2000, false);
+    if ($content === '') {
+        throw new ApiError(422, 'EMPTY_FORM_REPLY', 'Mesaj yazın.');
+    }
+    infoFormUsable($pdo, $formId);
+    $stmt = $pdo->prepare('INSERT INTO info_form_replies (form_id, author_id, content) VALUES (?, ?, ?)');
+    $stmt->execute([$formId, (int) $user['id'], $content]);
+    respond(['message' => 'Yorum gönderildi.', 'reply_id' => (int) $pdo->lastInsertId()], 201);
+}
+
+function actionInfoFormReplyLike(PDO $pdo, array $data): never
+{
+    $user = requireUser($pdo);
+    sessionRateGuard('info_form_reply_like', 30, 60);
+    $replyId = integerField($data['reply_id'] ?? null, 'Yorum');
+    // Yorum da formu da vadesi icinde olmali (oda mesajlariyla ayni politika).
+    $stmt = $pdo->prepare(
+        'SELECT 1 FROM info_form_replies r JOIN info_forms f ON f.id = r.form_id
+         WHERE r.id = ?
+           AND r.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)
+           AND f.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)'
+    );
+    $stmt->execute([$replyId]);
+    if (!$stmt->fetchColumn()) {
+        throw new ApiError(404, 'REPLY_NOT_FOUND', 'Yorum bulunamadı.');
+    }
+    $remove = $pdo->prepare('DELETE FROM info_form_reply_likes WHERE reply_id = ? AND user_id = ?');
+    $remove->execute([$replyId, (int) $user['id']]);
+    $liked = false;
+    if ($remove->rowCount() === 0) {
+        $add = $pdo->prepare('INSERT IGNORE INTO info_form_reply_likes (reply_id, user_id) VALUES (?, ?)');
+        $add->execute([$replyId, (int) $user['id']]);
+        $liked = $add->rowCount() > 0;
+    }
+    $count = $pdo->prepare('SELECT COUNT(*) FROM info_form_reply_likes WHERE reply_id = ?');
+    $count->execute([$replyId]);
+    respond(['liked' => $liked, 'likes' => (int) $count->fetchColumn()]);
+}
+
+// ============================================================================
+//  ŞİKAYET GÖNDERME
+// ============================================================================
+
+function actionComplaintSubmit(PDO $pdo, array $data): never
+{
+    $user = requireUser($pdo);
+    sessionRateGuard('complaint_submit', 20, 60);
+    $targetType = infoText($data, 'target_type', 'Hedef türü', 20, true);
+    if (!in_array($targetType, ['chat', 'form', 'form_reply'], true)) {
+        throw new ApiError(422, 'INVALID_COMPLAINT_TARGET', 'Şikayet hedefi tanınmadı.');
+    }
+    $reason = infoText($data, 'reason', 'Şikayet nedeni', 1000, false);
+    if ($reason === '') {
+        throw new ApiError(422, 'COMPLAINT_REASON_REQUIRED', 'Şikayet nedeni yazın.');
+    }
+    if (function_exists('mb_strlen') ? mb_strlen($reason, 'UTF-8') < 10 : strlen($reason) < 10) {
+        throw new ApiError(422, 'COMPLAINT_REASON_SHORT', 'Şikayet nedeni en az 10 karakter olmalıdır.');
+    }
+    $used = infoComplaintCountToday($pdo, (int) $user['id']);
+    if ($used >= COMPLAINT_DAILY_LIMIT) {
+        throw new ApiError(429, 'COMPLAINT_LIMIT', 'Bugünlük şikayet hakkın doldu (5/5). Yarın tekrar deneyebilirsin.', [
+            'limit' => COMPLAINT_DAILY_LIMIT,
+            'remaining' => 0,
+        ]);
+    }
+    $targetId = integerField($data['target_id'] ?? null, 'Hedef');
+    $authorId = null;
+    $authorName = '';
+    $snippet = '';
+    $roomName = null;
+    // Bakım henüz DB'den silmemiş olsa bile 24 saati aşan görünmez hedef
+    // şikayet edilemez. Önceden kaydedilmiş şikayet kanıtları korunur.
+    if ($targetType === 'chat') {
+        $stmt = $pdo->prepare(
+            'SELECT m.id, m.user_id, m.content, m.image_path, m.room_id, u.username
+             FROM messages m LEFT JOIN users u ON u.id = m.user_id
+             WHERE m.id = ? AND m.deleted_at IS NULL AND m.user_id IS NOT NULL
+               AND m.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)'
+        );
+        $stmt->execute([$targetId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            throw new ApiError(404, 'COMPLAINT_TARGET_MISSING', 'Şikayet edilecek mesaj bulunamadı.');
+        }
+        $authorId = (int) $row['user_id'];
+        $authorName = (string) ($row['username'] ?? '');
+        $raw = (string) ($row['content'] ?? '');
+        if ($raw === '' && $row['image_path']) {
+            $raw = '[Görsel mesaj]';
+        }
+        $snippet = function_exists('mb_substr') ? mb_substr($raw, 0, 300, 'UTF-8') : substr($raw, 0, 300);
+        $roomRow = $pdo->prepare('SELECT name FROM rooms WHERE id = ?');
+        $roomRow->execute([(int) $row['room_id']]);
+        $roomName = (string) ($roomRow->fetchColumn() ?: '');
+    } elseif ($targetType === 'form') {
+        $stmt = $pdo->prepare(
+            'SELECT id, author_id, title FROM info_forms WHERE id = ?
+             AND created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)'
+        );
+        $stmt->execute([$targetId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            throw new ApiError(404, 'COMPLAINT_TARGET_MISSING', 'Şikayet edilecek form bulunamadı.');
+        }
+        $authorId = (int) $row['author_id'];
+        $snippet = function_exists('mb_substr') ? mb_substr((string) $row['title'], 0, 300, 'UTF-8') : substr((string) $row['title'], 0, 300);
+        $roomName = 'Bilgi Odası · Form';
+        $name = $pdo->prepare('SELECT username FROM users WHERE id = ?');
+        $name->execute([$authorId]);
+        $authorName = (string) ($name->fetchColumn() ?: '');
+    } else {
+        $stmt = $pdo->prepare(
+            'SELECT r.id, r.form_id, r.author_id, r.content, f.title
+             FROM info_form_replies r JOIN info_forms f ON f.id = r.form_id
+             WHERE r.id = ?
+               AND r.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)
+               AND f.created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . MESSAGE_RETENTION_HOURS . ' HOUR)'
+        );
+        $stmt->execute([$targetId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            throw new ApiError(404, 'COMPLAINT_TARGET_MISSING', 'Şikayet edilecek yorum bulunamadı.');
+        }
+        $authorId = (int) $row['author_id'];
+        $snippet = function_exists('mb_substr') ? mb_substr((string) $row['content'], 0, 300, 'UTF-8') : substr((string) $row['content'], 0, 300);
+        $roomName = 'Bilgi Odası · ' . (string) $row['title'];
+        $name = $pdo->prepare('SELECT username FROM users WHERE id = ?');
+        $name->execute([$authorId]);
+        $authorName = (string) ($name->fetchColumn() ?: '');
+    }
+    if ($authorId === null) {
+        throw new ApiError(404, 'COMPLAINT_TARGET_MISSING', 'Şikayet edilecek içerik bulunamadı.');
+    }
+    if ($authorId === (int) $user['id']) {
+        throw new ApiError(422, 'COMPLAINT_SELF', 'Kendi içeriğini şikayet edemezsin.');
+    }
+    $insert = $pdo->prepare(
+        'INSERT INTO complaints (target_type, target_id, target_author_id, target_username, reporter_id, reason, snippet, room_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $insert->execute([$targetType, $targetId, $authorId, $authorName === '' ? null : $authorName, (int) $user['id'], $reason, $snippet, $roomName]);
+    respond([
+        'message' => 'Şikayetin iletildi. Yetkili ekibi inceleyecek.',
+        'complaint_id' => (int) $pdo->lastInsertId(),
+        'remaining' => max(0, COMPLAINT_DAILY_LIMIT - $used - 1),
+    ], 201);
+}
+
+// ============================================================================
+//  YÖNETİCİ: içerik yönetimi, besleme ayarları, şikayet kuyruğu
+// ============================================================================
+
+function adminInfoTargetRow(array $row): array
+{
+    return [
+        'id' => (int) $row['id'],
+        'section' => $row['section'],
+        'source' => $row['source'],
+        'title' => repairLegacyTurkishText($row['title']),
+        'content' => $row['content'] !== null ? repairLegacyTurkishText($row['content']) : null,
+        'link' => $row['link'],
+        'author' => $row['author'],
+        'published_at' => infoIso($row['published_at']),
+    ];
+}
+
+function adminAssertManualItem(PDO $pdo, int $id): array
+{
+    $stmt = $pdo->prepare("SELECT id, section, source FROM info_items WHERE id = ?");
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        throw new ApiError(404, 'INFO_ITEM_NOT_FOUND', 'İçerik bulunamadı.');
+    }
+    if (($row['source'] ?? '') !== 'manual') {
+        throw new ApiError(422, 'FEED_ITEM_LOCKED', 'Otomatik haber akışı kayıtları düzenlenemez veya silinemez.');
+    }
+    return $row;
+}
+
+function actionAdminInfoArticleCreate(PDO $pdo, array $data): never
+{
+    $admin = requireAdmin($pdo);
+    $section = infoValidateSection(infoText($data, 'section', 'Bölüm', 20, true));
+    $title = infoText($data, 'title', 'Başlık', 300, true);
+    $content = infoText($data, 'content', 'İçerik', 4000, false);
+    $link = infoText($data, 'link', 'Bağlantı', 700, false);
+    if ($content === '' && $link === '') {
+        throw new ApiError(422, 'EMPTY_INFO_ITEM', 'İçerik veya bağlantı ekleyin.');
+    }
+    if ($link !== '') {
+        $parts = parse_url($link);
+        if (!$parts || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true) || !isset($parts['host'])) {
+            throw new ApiError(422, 'INVALID_INFO_LINK', 'Bağlantı geçersiz; http(s) adresi olmalıdır.');
+        }
+    }
+    $stmt = $pdo->prepare(
+        "INSERT INTO info_items (section, source, title, content, link, author, published_at, updated_at)
+         VALUES (?, 'manual', ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())"
+    );
+    $stmt->execute([$section, $title, $content === '' ? null : $content, $link === '' ? null : $link, (string) ($admin['username'] ?? 'admin')]);
+    respond(['message' => 'İçerik yayınlandı.', 'item_id' => (int) $pdo->lastInsertId()], 201);
+}
+
+function actionAdminInfoArticleUpdate(PDO $pdo, array $data): never
+{
+    requireAdmin($pdo);
+    $id = integerField($data['id'] ?? null, 'İçerik');
+    adminAssertManualItem($pdo, $id);
+    $sets = [];
+    $params = [];
+    foreach (['title' => 300, 'content' => 4000, 'link' => 700] as $field => $max) {
+        if (!array_key_exists($field, $data)) {
+            continue;
+        }
+        $label = $field === 'title' ? 'Başlık' : ($field === 'content' ? 'İçerik' : 'Bağlantı');
+        $required = $field === 'title';
+        $value = infoText($data, $field, $label, $max, $required);
+        if ($field === 'link' && $value !== '') {
+            $parts = parse_url($value);
+            if (!$parts || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true) || !isset($parts['host'])) {
+                throw new ApiError(422, 'INVALID_INFO_LINK', 'Bağlantı geçersiz; http(s) adresi olmalıdır.');
+            }
+        }
+        $sets[] = '`' . $field . '` = ?';
+        $params[] = $value === '' ? null : $value;
+    }
+    if ($sets === []) {
+        throw new ApiError(422, 'VALIDATION_ERROR', 'Değiştirilecek alan yok.');
+    }
+    $sets[] = 'updated_at = UTC_TIMESTAMP()';
+    $stmt = $pdo->prepare('UPDATE info_items SET ' . implode(', ', $sets) . ' WHERE id = ?');
+    $params[] = $id;
+    $stmt->execute($params);
+    respond(['message' => 'İçerik güncellendi.']);
+}
+
+function actionAdminInfoArticleDelete(PDO $pdo, array $data): never
+{
+    requireAdmin($pdo);
+    $id = integerField($data['id'] ?? null, 'İçerik');
+    adminAssertManualItem($pdo, $id);
+    $pdo->prepare('DELETE FROM info_items WHERE id = ?')->execute([$id]);
+    respond(['message' => 'İçerik silindi.']);
+}
+
+function actionAdminFeedSettings(PDO $pdo, array $data): never
+{
+    requireAdmin($pdo);
+    $urls = infoText($data, 'urls', 'Kaynak adresleri', 4000, false);
+    $auto = filter_var($data['auto'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+    if ($auto === null) {
+        throw new ApiError(422, 'VALIDATION_ERROR', 'Otomatik tazeleme seçimi geçersiz.');
+    }
+    $lines = preg_split('/[\r\n,]+/', $urls ?? '') ?: [];
+    $kept = [];
+    foreach ($lines as $line) {
+        $line = trim((string) $line);
+        if ($line === '') {
+            continue;
+        }
+        $parts = parse_url($line);
+        if (!$parts || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true) || !isset($parts['host'])) {
+            throw new ApiError(422, 'INVALID_FEED_URL', 'Geçersiz kaynak adresi: ' . mb_substr($line, 0, 120));
+        }
+        $kept[] = $line;
+    }
+    $kept = array_values(array_unique($kept));
+    if ($kept === []) {
+        throw new ApiError(422, 'INVALID_FEED_URL', 'En az bir geçerli kaynak adresi girin.');
+    }
+    infoSetSetting($pdo, 'feed_urls', implode("\n", $kept));
+    infoSetSetting($pdo, 'feed_auto', $auto ? '1' : '0');
+    respond(['message' => 'Haber kaynağı ayarları kaydedildi.', 'urls' => $kept, 'auto' => $auto]);
+}
+
+function actionAdminFeedRefresh(PDO $pdo): never
+{
+    requireAdmin($pdo);
+    respond(['message' => 'Haber akışı güncellendi.', 'result' => infoFeedRefresh($pdo, true)]);
+}
+
+function actionAdminFeedStatus(PDO $pdo): never
+{
+    requireAdmin($pdo);
+    closeSessionEarlyForReads('admin_feed_status');
+    $all = infoSettingsAll($pdo);
+    $feedItems = (int) ($pdo->query("SELECT COUNT(*) FROM info_items WHERE section = 'haber' AND source = 'feed'")->fetchColumn() ?: 0);
+    $manualItems = (int) ($pdo->query("SELECT COUNT(*) FROM info_items WHERE source = 'manual'")->fetchColumn() ?: 0);
+    respond([
+        'urls' => infoFeedUrls($pdo),
+        'auto' => infoSetting($pdo, 'feed_auto', '1') === '1',
+        'last_at' => infoIso($all['feed_last_at'] ?? ''),
+        'last_ok' => ((string) ($all['feed_last_ok'] ?? '1')) === '1',
+        'last_error' => $all['feed_last_error'] ?? null,
+        'feed_items' => $feedItems,
+        'manual_items' => $manualItems,
+    ]);
+}
+
+function actionAdminComplaints(PDO $pdo): never
+{
+    sessionRateGuard('admin_complaints', 30, 30);
+    requireAdmin($pdo);
+    closeSessionEarlyForReads('admin_complaints');
+    $total = (int) ($pdo->query('SELECT COUNT(*) FROM complaints')->fetchColumn() ?: 0);
+    $stmt = $pdo->query(
+        'SELECT c.id, c.target_type, c.target_id, c.target_author_id, c.target_username,
+                c.reporter_id, c.reason, c.snippet, c.room_name, c.created_at,
+                ru.username AS reporter_username, tu.username AS live_target_username,
+                (b.user_id IS NOT NULL) AS accused_banned
+         FROM complaints c
+         LEFT JOIN users ru ON ru.id = c.reporter_id
+         LEFT JOIN users tu ON tu.id = c.target_author_id
+         LEFT JOIN banned_users b ON b.user_id = c.target_author_id
+            AND (b.banned_until IS NULL OR b.banned_until > UTC_TIMESTAMP())
+         ORDER BY c.id ASC LIMIT 200'
+    );
+    $complaints = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $accusedName = (string) ($row['live_target_username'] ?? '');
+        if ($accusedName === '') {
+            $accusedName = (string) ($row['target_username'] ?? '');
+        }
+        if ($accusedName === '') {
+            $accusedName = '(silinmiş hesap)';
+        }
+        $complaints[] = [
+            'id' => (int) $row['id'],
+            'target_type' => $row['target_type'],
+            'target_id' => (int) $row['target_id'],
+            'accused' => [
+                'id' => $row['target_author_id'] !== null ? (int) $row['target_author_id'] : null,
+                'username' => repairLegacyTurkishText($accusedName),
+                'banned' => (bool) $row['accused_banned'],
+            ],
+            'reporter' => [
+                'id' => (int) $row['reporter_id'],
+                'username' => repairLegacyTurkishText((string) ($row['reporter_username'] ?? '(silinmiş hesap)')),
+            ],
+            'reason' => repairLegacyTurkishText((string) $row['reason']),
+            'snippet' => repairLegacyTurkishText((string) $row['snippet']),
+            'room_name' => $row['room_name'] !== null ? repairLegacyTurkishText((string) $row['room_name']) : null,
+            'created_at' => infoIso($row['created_at']),
+        ];
+    }
+    respond(['complaints' => $complaints, 'total' => $total]);
+}
+
+function actionAdminComplaintReject(PDO $pdo, array $data): never
+{
+    requireAdmin($pdo);
+    $id = integerField($data['id'] ?? null, 'Şikayet');
+    $stmt = $pdo->prepare('DELETE FROM complaints WHERE id = ?');
+    $stmt->execute([$id]);
+    $remaining = (int) ($pdo->query('SELECT COUNT(*) FROM complaints')->fetchColumn() ?: 0);
+    respond(['message' => 'Şikayet reddedildi ve listeden kalıcı olarak kaldırıldı.', 'remaining' => $remaining]);
+}
+
+// ============================================================================
+//  (BİLGİ ODASI eylemleri sonu — aşağıda dispatch'e bağlanır)
+// ============================================================================
+
 function dispatch(): never
 {
     bootWebSession();
     sendSecurityHeaders();
     $action = strtolower(trim((string) ($_GET['action'] ?? $_POST['action'] ?? 'session')));
     $postActions = [
-        'check_invite_code', 'register', 'login', 'submit_approval', 'logout', 'send_message', 'delete_message', 'undo_delete_message', 'finalize_message_delete',
+        'register', 'login', 'submit_approval', 'logout', 'send_message', 'delete_message', 'undo_delete_message', 'finalize_message_delete',
         'update_profile', 'update_profile_photo', 'delete_profile_photo', 'update_settings', 'admin_login', 'admin_ban_user', 'admin_unban_user',
-        'admin_delete_user', 'admin_change_user_password', 'change_password', 'admin_decide_approval', 'admin_adjust_coins', 'admin_reset_invite_code', 'admin_set_access_code', 'admin_send_announcement', 'admin_delete_announcement', 'delete_own_account', 'ai_chat', 'buy_frame', 'equip_frame', 'claim_quest', 'claim_game_reward',
+        'admin_delete_user', 'admin_change_user_password', 'change_password', 'admin_decide_approval', 'admin_adjust_coins', 'admin_send_announcement', 'admin_delete_announcement', 'delete_own_account', 'ai_chat', 'buy_frame', 'equip_frame', 'claim_quest', 'claim_game_reward',
+        'info_form_create', 'info_form_like', 'info_form_reply', 'info_form_reply_like', 'info_form_delete',
+        'complaint_submit',
+        'admin_feed_refresh', 'admin_feed_settings',
+        'admin_info_article_create', 'admin_info_article_update', 'admin_info_article_delete',
+        'admin_complaint_reject',
     ];
     $isPostAction = in_array($action, $postActions, true);
     requireMethod($isPostAction ? 'POST' : 'GET');
@@ -5429,7 +6344,7 @@ function dispatch(): never
     } else {
         // Diğer okuma uçları için de kilidi erken bırak (requireUser sonrası DB işlemleri kilidi tutmasın)
         // closeSessionEarlyForReads çağrısı dispatch sonrası da yapılacak ama burada ön kontrol
-        if (in_array($action, ['get_rooms','get_messages','get_message_views','get_user_profile','get_my_invite_code','admin_search_users','admin_pending_approvals','get_economy','get_quests','heartbeat','session','get_banned_info'], true) && session_status() === PHP_SESSION_ACTIVE) {
+        if (in_array($action, ['get_rooms','get_messages','get_message_views','get_user_profile','admin_search_users','admin_pending_approvals','get_economy','get_quests','heartbeat','session','get_banned_info'], true) && session_status() === PHP_SESSION_ACTIVE) {
             // User doğrulandıktan sonra kapatılacak; burada sadece session varlığını koru
         }
     }
@@ -5446,7 +6361,6 @@ function dispatch(): never
 
     match ($action) {
         'session' => actionSession($pdo),
-        'check_invite_code' => actionCheckInvite($pdo, $data),
         'register' => actionRegister($pdo, $data),
         'login' => actionLogin($pdo, $data),
         'submit_approval' => actionSubmitApproval($pdo, $data),
@@ -5464,7 +6378,6 @@ function dispatch(): never
         'delete_profile_photo' => actionDeleteProfilePhoto($pdo),
         'update_settings' => actionUpdateSettings($pdo, $data),
         'change_password' => actionChangePassword($pdo, $data),
-        'get_my_invite_code' => actionGetMyInviteCode($pdo),
         'get_media' => actionGetMedia($pdo),
         'media' => actionGetMedia($pdo),
         'admin_pending_approvals' => actionAdminPendingApprovals($pdo),
@@ -5474,7 +6387,6 @@ function dispatch(): never
         'equip_frame' => actionEquipFrame($pdo, $data),
         'claim_quest' => actionClaimQuest($pdo, $data),
         'claim_game_reward' => actionClaimGameReward($pdo, $data),
-        'generate_new_invite_code' => throw new ApiError(405, 'AUTOMATIC_ROTATION_ONLY', 'Davetiye kodları yalnızca otomatik olarak yenilenir.'),
         'admin_login' => actionAdminLogin($pdo, $data),
         'admin_ban_user' => actionAdminBanUser($pdo, $data),
         'admin_unban_user' => actionAdminUnbanUser($pdo, $data),
@@ -5482,9 +6394,6 @@ function dispatch(): never
         'admin_decide_approval' => actionAdminDecideApproval($pdo, $data),
         'admin_change_user_password' => actionAdminChangeUserPassword($pdo, $data),
         'admin_adjust_coins' => actionAdminAdjustCoins($pdo, $data),
-        'admin_reset_invite_code' => actionAdminResetInviteCode($pdo, $data),
-        'admin_access_code_status' => actionAdminAccessCodeStatus($pdo),
-        'admin_set_access_code' => actionAdminSetAccessCode($pdo, $data),
         'admin_send_announcement' => actionAdminSendAnnouncement($pdo, $data),
         'admin_delete_announcement' => actionAdminDeleteAnnouncement($pdo, $data),
         'admin_search_users' => actionAdminSearchUsers($pdo),
@@ -5492,6 +6401,24 @@ function dispatch(): never
         'get_banned_info' => actionGetBannedInfo($pdo),
         'ai_chat' => actionAiChat($pdo, $data),
         'heartbeat' => actionHeartbeat($pdo),
+        'info_items' => actionInfoItems($pdo),
+        'info_forms' => actionInfoForms($pdo),
+        'info_form_replies' => actionInfoFormReplies($pdo),
+        'complaint_quota' => actionComplaintQuota($pdo),
+        'info_form_create' => actionInfoFormCreate($pdo, $data),
+        'info_form_delete' => actionInfoFormDelete($pdo, $data),
+        'info_form_like' => actionInfoFormLike($pdo, $data),
+        'info_form_reply' => actionInfoFormReply($pdo, $data),
+        'info_form_reply_like' => actionInfoFormReplyLike($pdo, $data),
+        'complaint_submit' => actionComplaintSubmit($pdo, $data),
+        'admin_feed_refresh' => actionAdminFeedRefresh($pdo),
+        'admin_feed_settings' => actionAdminFeedSettings($pdo, $data),
+        'admin_feed_status' => actionAdminFeedStatus($pdo),
+        'admin_info_article_create' => actionAdminInfoArticleCreate($pdo, $data),
+        'admin_info_article_update' => actionAdminInfoArticleUpdate($pdo, $data),
+        'admin_info_article_delete' => actionAdminInfoArticleDelete($pdo, $data),
+        'admin_complaints' => actionAdminComplaints($pdo),
+        'admin_complaint_reject' => actionAdminComplaintReject($pdo, $data),
         default => throw new ApiError(404, 'ACTION_NOT_FOUND', 'İstek tanınmadı: ' . $action),
     };
 }
@@ -5505,15 +6432,19 @@ if (PHP_SAPI === 'cli') {
         }
         $pdo = db();
         $total = 0;
+        $totalForms = 0;
         do {
             $count = cleanupExpiredMessages($pdo, 5000);
             $total += $count;
         } while ($count === 5000);
+        do {
+            $count = cleanupExpiredForms($pdo, 1000);
+            $totalForms += $count;
+        } while ($count === 1000);
         cleanupExpiredBans($pdo);
         purgeInactiveAccounts($pdo, 50);
-        rotateInviteCodes($pdo);
         $pdo->exec("DELETE FROM rate_limits WHERE rate_key NOT LIKE 'schema:%' AND updated_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 2 DAY)");
-        fwrite(STDOUT, "Temizlik tamamlandı. Silinen mesaj: {$total}\n");
+        fwrite(STDOUT, "Temizlik tamamlandı. Silinen mesaj: {$total}, silinen form: {$totalForms}\n");
         exit(0);
     } catch (Throwable $error) {
         fwrite(STDERR, 'Temizlik hatası: ' . $error->getMessage() . "\n");

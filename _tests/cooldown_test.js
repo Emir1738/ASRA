@@ -33,12 +33,6 @@ const URL = 'http://127.0.0.1:8090/';
   await wait(2000);
 
   // Giriş
-  await page.evaluate(() => {
-    const i = document.querySelector('#invite-form input[name="code"]');
-    i.value = 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
-    i.dispatchEvent(new Event('input', { bubbles: true }));
-    document.querySelector('#invite-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-  });
   await page.waitForSelector('#login-username', { timeout: 20000 });
   await page.evaluate(() => {
     const u = document.querySelector('#login-username');
@@ -49,7 +43,7 @@ const URL = 'http://127.0.0.1:8090/';
   });
   await page.waitForSelector('#app-shell:not([hidden])', { timeout: 20000 });
   await wait(2500);
-  await page.evaluate(() => { enterRoom(state.rooms[0]); });
+  await page.evaluate(() => { enterRoom(state.rooms.find((r) => !r.is_info)); });
   await wait(2500);
 
   const submitInfo = () => page.evaluate(() => {

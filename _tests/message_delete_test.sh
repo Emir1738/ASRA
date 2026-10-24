@@ -50,8 +50,6 @@ mk_user() { # ad -> id
   curl -s -A "$ua" -c "$jar" "$BASE?action=session" -o "$TDIR/r.json"
   local ccsrf; ccsrf=$(jget "$TDIR/r.json" '$.csrf_token')
   curl -s -A "$ua" -b "$jar" -c "$jar" -H "X-CSRF-Token: $ccsrf" -H "Content-Type: application/json" \
-    -d '{"code":"DAVETDAVETJSJEJSNFJSNDJSDNFH"}' "$BASE?action=check_invite_code" -o "$TDIR/r.json"
-  curl -s -A "$ua" -b "$jar" -c "$jar" -H "X-CSRF-Token: $ccsrf" -H "Content-Type: application/json" \
     -d "{\"username\":\"$name\",\"password\":\"Test123!xyz\",\"password_confirm\":\"Test123!xyz\"}" \
     "$BASE?action=register" -o "$TDIR/r.json"
   sql "UPDATE users SET approval_status='approved' WHERE username='$name'"

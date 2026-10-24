@@ -8,8 +8,9 @@ val signingProps = Properties().apply {
     val override = rootProject.file("signing.properties")
     if (override.exists()) override.inputStream().use { load(it) }
 }
-fun signProp(key: String, fallback: String): String =
-    signingProps.getProperty(key) ?: fallback
+// Yalnızca ortam değişkeni veya git dışı signing.properties; repoda parola yok.
+fun signProp(key: String, envName: String): String =
+    signingProps.getProperty(key) ?: System.getenv(envName).orEmpty()
 
 plugins {
     id("com.android.application")
@@ -24,8 +25,8 @@ android {
         applicationId = "app.asra.client"
         minSdk = 24
         targetSdk = 34
-        versionCode = 28
-        versionName = "1.7.1"
+        versionCode = 30
+        versionName = "1.7.3"
     }
 
     signingConfigs {
@@ -37,9 +38,9 @@ android {
             enableV3Signing = true
             enableV4Signing = false
             storeFile = keystoreFile
-            storePassword = signProp("storePassword", "asra-release-2026")
-            keyAlias = signProp("keyAlias", "asra")
-            keyPassword = signProp("keyPassword", "asra-release-2026")
+            storePassword = signProp("storePassword", "ASRA_SIGN_STORE_PASSWORD")
+            keyAlias = signingProps.getProperty("keyAlias") ?: System.getenv("ASRA_SIGN_KEY_ALIAS") ?: "asra"
+            keyPassword = signProp("keyPassword", "ASRA_SIGN_KEY_PASSWORD")
         }
     }
 
@@ -47,7 +48,10 @@ android {
         release {
             isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = if (keystoreFile.exists()) signingConfigs.getByName("release") else null
+            signingConfig = if (keystoreFile.exists() &&
+                signProp("storePassword", "ASRA_SIGN_STORE_PASSWORD").isNotEmpty() &&
+                signProp("keyPassword", "ASRA_SIGN_KEY_PASSWORD").isNotEmpty()
+            ) signingConfigs.getByName("release") else null
         }
         debug {
             isMinifyEnabled = false
@@ -64,7 +68,7 @@ android {
     }
 
     buildFeatures {
-        buildConfig = false
+        buildConfig = true // UA + önbellek sürümü tek kaynak: defaultConfig.versionName
         viewBinding = false
         compose = false
     }
@@ -82,7 +86,7 @@ android {
 }
 
 dependencies {
-    // v1.7.0: Bildirim sistemi KALDIRILDI. Firebase/FCM bağımlılığı YOKTUR;
-    // uygulama hiçbir üçüncü taraf push servisine bağlanmaz ve bildirim izni
-    // istemez. Bu blok bilinçli olarak boştur.
+    // Bildirim/push kütüphanesi YOK. JUnit yalnızca JVM testlerine girer,
+    // dağıtım APK'sına veya kullanıcı izinlerine eklenmez.
+    testImplementation("junit:junit:4.13.2")
 }

@@ -1,5 +1,6 @@
 # Build ürünleri
 asra-apk-build/build/
+asra-apk-build/app/build/
 *.apk.bak
 
 # Test çalıştırma artıkları (her koşuda yeniden oluşur)
@@ -11,10 +12,14 @@ local.properties
 signing.properties
 
 # Gizli anahtarlar ASLA depoya girmez
+asra-apk-build/*.jks
+asra-apk-build/*.keystore
 asra-fcm-service-account.json
 *-firebase-adminsdk*.json
 
 # Dağıtım yapılandırması (veritabanı parolası) ASLA depoya girmez
+# Yerel dağıtım auth.php dosyalarında üretim sırrı var; yalnızca arındırılmış
+# GitHub kopyası dışa aktarılır.
 asra-site-fix/asra-config.php
 
 # ÇALIŞMA ALANI GİZLİLERİ: Firebase servis hesabı anahtarları ve kullanıcı

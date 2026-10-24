@@ -5,6 +5,7 @@
     <string name="error_message">Bağlantı kurulamadı. İnternetinizi kontrol edip tekrar deneyin.</string>
     <string name="error_ssl">Güvenli bağlantı doğrulanamadı.</string>
     <string name="error_offline">İnternet bağlantısı yok.</string>
+    <string name="error_server">Sunucu şu anda yanıt veremiyor. Biraz sonra tekrar deneyin.</string>
     <string name="retry">Tekrar Dene</string>
     <string name="chooser_title">Dosya veya fotoğraf seç</string>
     <!-- v1.7.0: Bildirim sistemi kaldırıldı. Firebase yapilandirmasi

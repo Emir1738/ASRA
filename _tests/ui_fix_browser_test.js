@@ -49,14 +49,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(1200);
 
   // --- giriş ---------------------------------------------------------------
-  await page.evaluate(() => {
-    const i = document.querySelector('#invite-form input[name="code"]');
-    if (i) {
-      i.value = 'DAVETDAVETJSJEJSNFJSNDJSDNFH';
-      i.dispatchEvent(new Event('input', { bubbles: true }));
-      document.querySelector('#invite-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    }
-  });
   await page.waitForSelector('#login-username', { timeout: 20000 }).catch(() => {});
   await page.evaluate(() => {
     const u = document.querySelector('#login-username');
@@ -75,7 +67,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // --- odaya gir (önceden boşaltıldı -> boş oda senaryosu) -----------------
   const roomId = await page.evaluate(() => {
-    const card = document.querySelector('.room-card');
+    const card = Array.from(document.querySelectorAll('.room-card')).find((el) => el.dataset.roomId !== '0');
     if (!card) return 0;
     const id = Number(card.dataset.roomId || 0);
     card.click();

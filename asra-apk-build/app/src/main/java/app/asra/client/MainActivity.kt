@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -39,6 +40,7 @@ import android.webkit.WebBackForwardList
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebView.WebViewTransport
@@ -61,6 +63,9 @@ class MainActivity : Activity() {
     private lateinit var retryButton: Button
 
     private var webView: WebView? = null
+    private var popupWebView: WebView? = null
+    private val backGate = AsraBackGate()
+    private var backTimeout: Runnable? = null
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private var originalSystemUi: Int = 0
@@ -73,9 +78,7 @@ class MainActivity : Activity() {
     private var pendingWebPermission: PermissionRequest? = null
 
     private var lastFailedUrl: String = START_URL
-    private var restoredFromState: Boolean = false
     private var pageHadError: Boolean = false
-    private var activityVisible: Boolean = false
     private var pendingRoomId: Int = 0
 
     private lateinit var deviceId: String
@@ -98,13 +101,13 @@ class MainActivity : Activity() {
         errorMessage = findViewById(R.id.error_message)
         retryButton = findViewById(R.id.retry_button)
         retryButton.setOnClickListener { retryLoad() }
+        cleanupStaleCaptures()
 
         if (Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(1000) { handleBack() }
         }
 
         attachWebView(savedInstanceState)
-        activityVisible = true
         startCookieSync()
     }
 
@@ -151,7 +154,8 @@ class MainActivity : Activity() {
         view.webViewClient = AsraClient()
         view.webChromeClient = AsraChrome()
         view.setDownloadListener(AsraDownloads())
-        CookieManager.getInstance().setAcceptThirdPartyCookies(view, true)
+        // Site ve API aynı kökende; üçüncü taraf çerezlerine gerek yok.
+        CookieManager.getInstance().setAcceptThirdPartyCookies(view, false)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             view.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, true)
@@ -162,16 +166,16 @@ class MainActivity : Activity() {
         webView = view
 
         val restored = savedInstanceState?.let { view.restoreState(it) }
-        if (restored != null && restored.size > 0) {
-            restoredFromState = true
-        } else {
-            // Sürekli günceli çek: önbelleği temizle ve cache-bypass parametresi ekle
+        if (restored == null || restored.size == 0 ||
+            !AsraNavigation.isTrustedUrl(restored.currentItem?.url)
+        ) {
+            // Önceki sürümde kayda giren dış URL'yi geri YÜKLEME.
             try {
+                view.stopLoading()
                 view.clearCache(true)
                 CookieManager.getInstance().flush()
             } catch (_: Exception) {}
-            val bustUrl = START_URL + (if (START_URL.contains("?")) "&" else "?") + "_v=1.6.0_" + System.currentTimeMillis()
-            view.loadUrl(bustUrl)
+            view.loadUrl("$START_URL?_v=${BuildConfig.VERSION_NAME}_${System.currentTimeMillis()}")
         }
     }
 
@@ -181,7 +185,7 @@ class MainActivity : Activity() {
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
-        settings.javaScriptCanOpenWindowsAutomatically = true
+        settings.javaScriptCanOpenWindowsAutomatically = false // sadece kullanıcı dokunuşuyla yeni pencere
         settings.setSupportMultipleWindows(true)
         settings.loadsImagesAutomatically = true
         settings.blockNetworkImage = false
@@ -206,17 +210,14 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             settings.isAlgorithmicDarkeningAllowed = false
         }
-        val baseUa = settings.userAgentString ?: ""
-        if (!baseUa.contains("AsraApp/")) {
-            settings.userAgentString = "$baseUa AsraApp/1.5.7"
-        }
-        AsraSession.rememberUserAgent(this, settings.userAgentString ?: "")
+        settings.userAgentString = AsraUserAgent.current(settings.userAgentString.orEmpty(), BuildConfig.VERSION_NAME)
+        AsraSession.rememberUserAgent(this, settings.userAgentString.orEmpty())
     }
 
     private fun retryLoad() {
         hideError()
         pageHadError = false
-        val target = lastFailedUrl.ifBlank { START_URL }
+        val target = lastFailedUrl.takeIf { AsraNavigation.isTrustedUrl(it) } ?: START_URL
         val view = webView
         if (view == null) {
             attachWebView(null)
@@ -235,7 +236,7 @@ class MainActivity : Activity() {
     }
 
     private fun showError(message: String, failedUrl: String) {
-        lastFailedUrl = failedUrl.ifBlank { START_URL }
+        lastFailedUrl = failedUrl.takeIf { AsraNavigation.isTrustedUrl(it) } ?: START_URL
         errorMessage.text = message
         errorOverlay.visibility = View.VISIBLE
         progressBar.visibility = View.GONE
@@ -293,16 +294,53 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun cancelPendingBack() {
+        backTimeout?.let { mainHandler.removeCallbacks(it) }
+        backTimeout = null
+        backGate.cancel()
+    }
+
     private fun handleBack() {
         if (customView != null) {
             hideCustomView()
             return
         }
         val view = webView
-        if (view != null && view.canGoBack()) {
-            view.goBack()
-        } else {
+        if (view == null || errorOverlay.visibility == View.VISIBLE ||
+            !AsraNavigation.isTrustedUrl(view.url)
+        ) {
             finish()
+            return
+        }
+        val token = backGate.begin() ?: return
+        // Renderer yanıt vermezse geri tuşu kalıcı olarak kilitlenmemeli.
+        // Yalnızca bu isteğe ait zamanlayıcı çıkış yapabilir; sayfa değişirse
+        // veya renderer yeniden kurulursa cancelPendingBack() onu iptal eder.
+        val timeout = Runnable {
+            if (backGate.complete(token)) {
+                backTimeout = null
+                if (webView === view && !isFinishing && !isDestroyed) finish()
+            }
+        }
+        backTimeout = timeout
+        mainHandler.postDelayed(timeout, BACK_TIMEOUT_MS)
+        // WebView geçmişi SPA ekranları için boş, yenileme sonrası ise bayat
+        // giriş sayfaları içerir. Önce site içindeki modal/menü/geri düğmesini
+        // kullan; ana ekranda doğrudan çık.
+        try {
+            view.evaluateJavascript(AsraInject.BACK_SCRIPT) { result ->
+                if (!backGate.complete(token)) return@evaluateJavascript
+                mainHandler.removeCallbacks(timeout)
+                backTimeout = null
+                if (webView !== view || isFinishing || isDestroyed) return@evaluateJavascript
+                if (result != "\"handled\"") finish()
+            }
+        } catch (_: Exception) {
+            if (backGate.complete(token)) {
+                mainHandler.removeCallbacks(timeout)
+                backTimeout = null
+                finish()
+            }
         }
     }
 
@@ -330,23 +368,27 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
-        activityVisible = false
+        cancelPendingBack()
+        mainHandler.removeCallbacks(cookieSync)
         CookieManager.getInstance().flush()
         AsraSession.persist(this)
+        webView?.onPause()
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
-        activityVisible = true
         webView?.onResume()
         AsraSession.persist(this)
+        startCookieSync()
     }
 
     override fun onDestroy() {
+        cancelPendingBack()
         cancelFileCallback()
         pendingWebPermission?.deny()
         pendingWebPermission = null
+        destroyPopupWebView()
         hideCustomView()
         CookieManager.getInstance().flush()
         AsraSession.persist(this)
@@ -368,23 +410,19 @@ class MainActivity : Activity() {
     private fun cancelFileCallback() {
         filePathCallback?.onReceiveValue(null)
         filePathCallback = null
-        cameraOutputUris.clear()
-    }
-
-    private fun isInternalHttp(uri: Uri): Boolean {
-        val scheme = uri.scheme?.lowercase(Locale.US)
-        return scheme == "http" || scheme == "https"
+        cleanupCaptureUris(emptySet())
     }
 
     private fun openExternal(uri: Uri): Boolean {
-        val scheme = uri.scheme?.lowercase(Locale.US) ?: return false
-        val intent = when (scheme) {
-            "tel" -> Intent(Intent.ACTION_DIAL, uri)
-            "mailto", "sms", "smsto", "mms", "mmsto", "geo", "whatsapp", "intent" ->
-                Intent(Intent.ACTION_VIEW, uri)
-            else -> Intent(Intent.ACTION_VIEW, uri)
+        // javascript:, intent:, file:, content: vb. şemaları WebView'e de
+        // başka bir uygulamaya da geçirme. Yalnızca bilinen bağlantılar açılır.
+        val action = when (AsraNavigation.externalAction(uri.toString())) {
+            AsraNavigation.ExternalAction.DIAL -> Intent.ACTION_DIAL
+            AsraNavigation.ExternalAction.SEND_TO -> Intent.ACTION_SENDTO
+            AsraNavigation.ExternalAction.VIEW -> Intent.ACTION_VIEW
+            null -> return true
         }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val intent = Intent(action, uri)
         return try {
             startActivity(intent)
             true
@@ -392,7 +430,29 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Uygun uygulama bulunamadı", Toast.LENGTH_SHORT).show()
             true
         } catch (_: Exception) {
+            Toast.makeText(this, "Bağlantı açılamadı", Toast.LENGTH_SHORT).show()
             true
+        }
+    }
+
+    private fun cleanupCaptureUris(keep: Set<Uri>) {
+        val permissions = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        for (uri in cameraOutputUris) {
+            if (uri !in keep) {
+                val name = uri.lastPathSegment ?: continue
+                File(CaptureFileProvider.captureDir(this), name).delete()
+            }
+            try { revokeUriPermission(uri, permissions) } catch (_: Exception) {}
+        }
+        cameraOutputUris.clear()
+    }
+
+    private fun cleanupStaleCaptures() {
+        val cutoff = System.currentTimeMillis() - 24L * 60L * 60L * 1000L
+        CaptureFileProvider.captureDir(this).listFiles()?.forEach { file ->
+            if (file.isFile && file.name.startsWith("asra_") && file.lastModified() < cutoff) {
+                file.delete()
+            }
         }
     }
 
@@ -402,8 +462,16 @@ class MainActivity : Activity() {
         pendingAllowMultiple = allowMultiple
 
         val accept = AcceptSpec.parse(acceptTypes)
-        val needsCamera = captureOnly || accept.images || accept.videos || accept.any
-        if (needsCamera && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+        // Sadece dosya/fotoğraf SEÇEN kullanıcıdan kamera izni istenmez.
+        // İzin reddedilirse capture ipucunda bile belge seçimine düşülür.
+        if (AsraCapturePolicy.needsCameraPrompt(
+                captureOnly,
+                packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY),
+                checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
+                accept.images,
+                accept.videos
+            )
+        ) {
             requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAMERA)
             return
         }
@@ -411,22 +479,25 @@ class MainActivity : Activity() {
     }
 
     private fun startChooserIntents(captureOnly: Boolean, accept: AcceptSpec, allowMultiple: Boolean) {
-        cameraOutputUris.clear()
+        cleanupCaptureUris(emptySet())
         val extras = mutableListOf<Intent>()
-        if (accept.images || accept.any || captureOnly) {
-            createImageCaptureIntent()?.let { extras += it }
-        }
-        if (accept.videos || (accept.any && !captureOnly)) {
-            createVideoCaptureIntent()?.let { extras += it }
-        }
+        val (photo, video) = AsraCapturePolicy.cameraOptions(
+            checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
+            accept.images,
+            accept.videos
+        )
+        if (photo) createImageCaptureIntent()?.let { extras += it }
+        if (video) createVideoCaptureIntent()?.let { extras += it }
 
-        if (captureOnly && extras.isNotEmpty()) {
+        if (AsraCapturePolicy.directCapture(captureOnly, extras.size)) {
             try {
                 startActivityForResult(extras.first(), REQ_FILE)
+                return
             } catch (_: Exception) {
-                cancelFileCallback()
+                // Kamera uygulaması başlatılamasa bile ek dosya seçilebilmeli.
+                cleanupCaptureUris(emptySet())
+                extras.clear()
             }
-            return
         }
 
         val picker = Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -439,20 +510,26 @@ class MainActivity : Activity() {
             }
         }
 
+        // accept=image/*,video/* + capture iki türü de kabul eder: eski kod
+        // yalnızca ilk (fotoğraf) uygulamasını açıp video çekimini saklıyordu.
+        val cameraOnlyChooser = captureOnly && extras.size > 1
         val chooser = Intent(Intent.ACTION_CHOOSER).apply {
-            putExtra(Intent.EXTRA_INTENT, picker)
+            putExtra(Intent.EXTRA_INTENT, if (cameraOnlyChooser) extras.first() else picker)
             putExtra(Intent.EXTRA_TITLE, getString(R.string.chooser_title))
-            if (extras.isNotEmpty()) {
-                putExtra(Intent.EXTRA_INITIAL_INTENTS, extras.toTypedArray())
+            val alternatives = if (cameraOnlyChooser) extras.drop(1) else extras
+            if (alternatives.isNotEmpty()) {
+                putExtra(Intent.EXTRA_INITIAL_INTENTS, alternatives.toTypedArray())
             }
         }
         try {
             startActivityForResult(chooser, REQ_FILE)
         } catch (_: Exception) {
+            cleanupCaptureUris(emptySet())
             try {
                 startActivityForResult(picker, REQ_FILE)
             } catch (_: Exception) {
                 cancelFileCallback()
+                Toast.makeText(this, "Dosya seçici bulunamadı", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -467,12 +544,14 @@ class MainActivity : Activity() {
             return null
         }
         val uri = CaptureFileProvider.uriFor(name)
-        cameraOutputUris += uri
         val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
         intent.putExtra(MediaStore.EXTRA_OUTPUT, uri)
+        intent.clipData = ClipData.newUri(contentResolver, "capture", uri)
         intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        if (intent.resolveActivity(packageManager) == null) { file.delete(); return null }
+        cameraOutputUris += uri
         grantUriToCameraApps(intent, uri)
-        return if (intent.resolveActivity(packageManager) != null) intent else null
+        return intent
     }
 
     private fun createVideoCaptureIntent(): Intent? {
@@ -485,12 +564,14 @@ class MainActivity : Activity() {
             return null
         }
         val uri = CaptureFileProvider.uriFor(name)
-        cameraOutputUris += uri
         val intent = Intent(MediaStore.ACTION_VIDEO_CAPTURE)
         intent.putExtra(MediaStore.EXTRA_OUTPUT, uri)
+        intent.clipData = ClipData.newUri(contentResolver, "capture", uri)
         intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        if (intent.resolveActivity(packageManager) == null) { file.delete(); return null }
+        cameraOutputUris += uri
         grantUriToCameraApps(intent, uri)
-        return if (intent.resolveActivity(packageManager) != null) intent else null
+        return intent
     }
 
     private fun grantUriToCameraApps(intent: Intent, uri: Uri) {
@@ -509,8 +590,10 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
             REQ_CAMERA -> {
-                val accept = AcceptSpec.parse(pendingAcceptTypes)
-                startChooserIntents(pendingCaptureOnly, accept, pendingAllowMultiple)
+                if (filePathCallback != null) {
+                    val accept = AcceptSpec.parse(pendingAcceptTypes)
+                    startChooserIntents(pendingCaptureOnly, accept, pendingAllowMultiple)
+                }
             }
             REQ_WEB_PERM -> resolveWebPermission()
         }
@@ -521,32 +604,47 @@ class MainActivity : Activity() {
         if (requestCode != REQ_FILE) return
         val callback = filePathCallback
         filePathCallback = null
-        if (callback == null) return
+        if (callback == null) {
+            cleanupCaptureUris(emptySet())
+            return
+        }
 
-        val uris = mutableListOf<Uri>()
-        if (resultCode == RESULT_OK) {
+        val uris = if (resultCode == RESULT_OK) {
+            val captured = cameraOutputUris.filter { uri ->
+                val name = uri.lastPathSegment ?: return@filter false
+                val file = File(CaptureFileProvider.captureDir(this), name)
+                file.isFile && file.length() > 0L
+            }
+            val picked = mutableListOf<Uri>()
             val clip = data?.clipData
             if (clip != null) {
                 for (i in 0 until clip.itemCount) {
-                    clip.getItemAt(i).uri?.let { uris += it }
+                    clip.getItemAt(i).uri?.let { picked += it }
                 }
-            } else if (data?.data != null) {
-                uris += data.data!!
             } else {
-                for (captured in cameraOutputUris) {
-                    val fileName = captured.lastPathSegment ?: continue
-                    val file = File(CaptureFileProvider.captureDir(this), fileName)
-                    if (file.exists() && file.length() > 0L) {
-                        uris.add(captured)
-                    }
-                }
+                data?.data?.let { picked += it }
             }
-        }
-        cameraOutputUris.clear()
+            // Kamera thumbnail URI döndürse bile dolu tam boyutlu dosya
+            // gönderilir. Tek dosyalı form çoklu URI ile beslenmez.
+            AsraCapturePolicy.selectedUris(captured, picked, pendingAllowMultiple)
+        } else emptyList()
+        cleanupCaptureUris(uris.toSet())
         callback.onReceiveValue(if (uris.isEmpty()) null else uris.toTypedArray())
     }
 
     private fun requestWebPermissions(request: PermissionRequest) {
+        // İzin kökeni HTTPS Asra olmalı; DRM kimliği/gelecek kaynak türleri
+        // sessizce onaylanmaz. İzin diyaloğu sayfa değiştirilirken de denetlenir.
+        if (!AsraNavigation.isTrustedUrl(request.origin?.toString()) ||
+            !AsraNavigation.isTrustedUrl(webView?.url) ||
+            request.resources.any {
+                it != PermissionRequest.RESOURCE_VIDEO_CAPTURE &&
+                    it != PermissionRequest.RESOURCE_AUDIO_CAPTURE
+            }
+        ) {
+            request.deny()
+            return
+        }
         pendingWebPermission?.deny()
         pendingWebPermission = request
         val needed = mutableListOf<String>()
@@ -572,6 +670,12 @@ class MainActivity : Activity() {
     private fun resolveWebPermission() {
         val request = pendingWebPermission ?: return
         pendingWebPermission = null
+        if (!AsraNavigation.isTrustedUrl(request.origin?.toString()) ||
+            !AsraNavigation.isTrustedUrl(webView?.url)
+        ) {
+            request.deny()
+            return
+        }
         val granted = mutableListOf<String>()
         for (res in request.resources) {
             when (res) {
@@ -583,10 +687,20 @@ class MainActivity : Activity() {
                     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                         granted += res
                     }
-                PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID -> granted += res
             }
         }
         if (granted.isEmpty()) request.deny() else request.grant(granted.toTypedArray())
+    }
+
+    private fun destroyPopupWebView() {
+        val popup = popupWebView ?: return
+        popupWebView = null
+        try {
+            popup.stopLoading()
+            popup.webChromeClient = null
+            popup.webViewClient = WebViewClient()
+            popup.destroy()
+        } catch (_: Exception) {}
     }
 
     private fun hideCustomView() {
@@ -631,6 +745,7 @@ class MainActivity : Activity() {
     }
 
     private fun rebuildWebViewAfterCrash() {
+        cancelPendingBack()
         val old = webView
         var history: WebBackForwardList? = null
         val state = Bundle()
@@ -654,35 +769,50 @@ class MainActivity : Activity() {
 
     private inner class AsraClient : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+            if (!request.isForMainFrame) return false
             val uri = request.url
-            if (isInternalHttp(uri)) return false
+            if (AsraNavigation.isTrustedUrl(uri.toString())) return false
             return openExternal(uri)
         }
 
         @Deprecated("Deprecated in Java")
         override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-            val uri = Uri.parse(url)
-            if (isInternalHttp(uri)) return false
-            return openExternal(uri)
+            if (AsraNavigation.isTrustedUrl(url)) return false
+            return openExternal(Uri.parse(url))
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+            if (view !== webView) return
+            cancelPendingBack()
             pageHadError = false
-            if (errorOverlay.visibility == View.VISIBLE && url != lastFailedUrl) {
-                hideError()
+            if (!AsraNavigation.isTrustedUrl(url)) {
+                // shouldOverrideUrlLoading atlanabilen ilk yükleme/302 yönlendirmesi.
+                // Dış sayfa AsraNative köprüsüne erişmeden durdurulur.
+                view.stopLoading()
+                pageHadError = true
+                showError(getString(R.string.error_message), START_URL)
+                return
             }
-            injectBridge(view)
+            if (errorOverlay.visibility == View.VISIBLE && url != lastFailedUrl) hideError()
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
+            if (view !== webView || !AsraNavigation.isTrustedUrl(url)) return
             CookieManager.getInstance().flush()
-            injectBridge(view)
-            if (!pageHadError && errorOverlay.visibility == View.VISIBLE) {
-                hideError()
-            }
-            if (progressBar.progress >= 100) {
-                progressBar.visibility = View.GONE
-            }
+            AsraSession.persist(this@MainActivity)
+            if (!pageHadError) injectBridge(view)
+            if (!pageHadError && errorOverlay.visibility == View.VISIBLE) hideError()
+            if (progressBar.progress >= 100) progressBar.visibility = View.GONE
+        }
+
+        override fun onReceivedHttpError(
+            view: WebView,
+            request: WebResourceRequest,
+            errorResponse: WebResourceResponse
+        ) {
+            if (view !== webView || !request.isForMainFrame || errorResponse.statusCode < 400) return
+            pageHadError = true
+            showError(getString(R.string.error_server), request.url?.toString() ?: START_URL)
         }
 
         override fun onReceivedError(
@@ -690,7 +820,7 @@ class MainActivity : Activity() {
             request: WebResourceRequest,
             error: WebResourceError
         ) {
-            if (!request.isForMainFrame) return
+            if (view !== webView || !request.isForMainFrame) return
             pageHadError = true
             val url = request.url?.toString() ?: view.url ?: START_URL
             val message = if (!hasNetwork()) {
@@ -708,7 +838,7 @@ class MainActivity : Activity() {
             description: String?,
             failingUrl: String?
         ) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M || view !== webView) return
             pageHadError = true
             val message = if (!hasNetwork()) {
                 getString(R.string.error_offline)
@@ -719,16 +849,19 @@ class MainActivity : Activity() {
         }
 
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
-            handler.cancel()
-            pageHadError = true
-            showError(getString(R.string.error_ssl), error.url ?: view.url ?: START_URL)
+            handler.cancel() // sertifika hatasını ASLA yok sayma
+            if (view === webView && AsraNavigation.isTrustedUrl(error.url)) {
+                pageHadError = true
+                showError(getString(R.string.error_ssl), error.url ?: START_URL)
+            }
         }
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             if (view == webView) {
                 rebuildWebViewAfterCrash()
+                return true
             }
-            return true
+            return false
         }
     }
 
@@ -747,6 +880,10 @@ class MainActivity : Activity() {
             filePathCallback: ValueCallback<Array<Uri>>,
             fileChooserParams: FileChooserParams
         ): Boolean {
+            if (webView !== this@MainActivity.webView || !AsraNavigation.isTrustedUrl(webView.url)) {
+                filePathCallback.onReceiveValue(null)
+                return true
+            }
             cancelFileCallback()
             this@MainActivity.filePathCallback = filePathCallback
             val accept = fileChooserParams.acceptTypes ?: emptyArray()
@@ -776,28 +913,51 @@ class MainActivity : Activity() {
             isUserGesture: Boolean,
             resultMsg: Message
         ): Boolean {
-            val host = webView ?: view
+            if (!isUserGesture || view !== webView || !AsraNavigation.isTrustedUrl(view.url)) return false
             val transport = resultMsg.obj as? WebViewTransport ?: return false
-            val temp = WebView(host.context).apply {
-                settings.javaScriptEnabled = true
+            destroyPopupWebView()
+            // _blank bağlantısının hedefi onCreateWindow'da henüz bilinmez.
+            // Geçici WebView URL'yi yakalar; script/bridge içermez ve hemen
+            // yok edilir. İlk yükleme shouldOverride'ı ATLARSA onPageStarted
+            // de yakalar (eski sürümde Bilgi Odası bağlantıları boş kalıyordu).
+            val host = view
+            var forwarded = false
+            val popup = WebView(this@MainActivity).apply {
+                settings.javaScriptEnabled = false
+                settings.allowFileAccess = false
                 webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(
-                        v: WebView,
-                        request: WebResourceRequest
-                    ): Boolean {
-                        val uri = request.url
-                        if (isInternalHttp(uri)) {
-                            host.loadUrl(uri.toString())
-                        } else {
-                            openExternal(uri)
-                        }
+                    private fun forward(v: WebView, raw: String?) {
+                        if (forwarded || raw.isNullOrBlank() || raw == "about:blank") return
+                        forwarded = true
+                        if (AsraNavigation.isTrustedUrl(raw)) host.loadUrl(raw)
+                        else openExternal(Uri.parse(raw))
+                        mainHandler.post { if (popupWebView === v) destroyPopupWebView() }
+                    }
+
+                    override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
+                        if (request.isForMainFrame) forward(v, request.url.toString())
+                        return true
+                    }
+
+                    override fun onPageStarted(v: WebView, url: String?, favicon: Bitmap?) {
+                        forward(v, url)
+                    }
+
+                    override fun onRenderProcessGone(v: WebView, detail: RenderProcessGoneDetail): Boolean {
+                        if (popupWebView === v) destroyPopupWebView()
                         return true
                     }
                 }
             }
-            transport.webView = temp
+            popupWebView = popup
+            transport.webView = popup
             resultMsg.sendToTarget()
+            mainHandler.postDelayed({ if (popupWebView === popup) destroyPopupWebView() }, 10000)
             return true
+        }
+
+        override fun onCloseWindow(window: WebView) {
+            if (popupWebView === window) destroyPopupWebView()
         }
 
         override fun onShowCustomView(view: View, callback: CustomViewCallback) {
@@ -833,19 +993,21 @@ class MainActivity : Activity() {
             mimeType: String?,
             contentLength: Long
         ) {
-            if (url.startsWith("blob:") || url.startsWith("data:")) {
-                Toast.makeText(this@MainActivity, "Bu indirme desteklenmiyor", Toast.LENGTH_SHORT).show()
+            if (!AsraNavigation.isTrustedUrl(url)) {
+                // Dış indirmeyi tarayıcıya bırak; Asra çerezlerini/kimliğini
+                // DownloadManager aracılığıyla başka bir kökene gönderme.
+                if (AsraNavigation.canOpenExternally(url)) openExternal(Uri.parse(url))
+                else Toast.makeText(this@MainActivity, "Bu indirme desteklenmiyor", Toast.LENGTH_SHORT).show()
                 return
             }
             try {
                 val request = DownloadManager.Request(Uri.parse(url))
                 val resolvedMime = mimeType?.takeIf { it.isNotBlank() } ?: "application/octet-stream"
                 request.setMimeType(resolvedMime)
-                request.addRequestHeader("User-Agent", userAgent ?: webView?.settings?.userAgentString)
+                request.addRequestHeader("User-Agent", userAgent?.takeIf { it.isNotBlank() }
+                    ?: webView?.settings?.userAgentString ?: AsraSession.userAgent(this@MainActivity))
                 val cookie = CookieManager.getInstance().getCookie(url)
-                if (!cookie.isNullOrBlank()) {
-                    request.addRequestHeader("Cookie", cookie)
-                }
+                if (!cookie.isNullOrBlank()) request.addRequestHeader("Cookie", cookie)
                 request.setNotificationVisibility(
                     DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
                 )
@@ -869,8 +1031,7 @@ class MainActivity : Activity() {
         val primaryType: String,
         val extraMimes: Array<String>?,
         val images: Boolean,
-        val videos: Boolean,
-        val any: Boolean
+        val videos: Boolean
     ) {
         companion object {
             fun parse(raw: Array<String>?): AcceptSpec {
@@ -880,7 +1041,7 @@ class MainActivity : Activity() {
                     ?.filter { it.isNotEmpty() }
                     .orEmpty()
                 if (tokens.isEmpty()) {
-                    return AcceptSpec("*/*", null, images = true, videos = true, any = true)
+                    return AcceptSpec("*/*", null, images = true, videos = true)
                 }
                 val mimes = tokens.map { token ->
                     when {
@@ -894,7 +1055,6 @@ class MainActivity : Activity() {
                 }.distinct()
                 val images = mimes.any { it.startsWith("image/") || it == "*/*" }
                 val videos = mimes.any { it.startsWith("video/") || it == "*/*" }
-                val any = mimes.any { it == "*/*" } || (!images && !videos)
                 val primary = when {
                     mimes.size == 1 -> mimes[0]
                     mimes.all { it.startsWith("image/") } -> "image/*"
@@ -902,7 +1062,7 @@ class MainActivity : Activity() {
                     else -> "*/*"
                 }
                 val extras = if (mimes.size > 1) mimes.toTypedArray() else null
-                return AcceptSpec(primary, extras, images, videos, any)
+                return AcceptSpec(primary, extras, images, videos)
             }
         }
     }
@@ -913,6 +1073,7 @@ class MainActivity : Activity() {
         private const val REQ_FILE = 4101
         private const val REQ_CAMERA = 4102
         private const val REQ_WEB_PERM = 4103
+        private const val BACK_TIMEOUT_MS = 2500L
         private const val WEBVIEW_ID = 0x51A1001
     }
 }

@@ -84,8 +84,6 @@ print(t or sys.argv[2])" "$1" "$2" 2>/dev/null || echo "$2"; }
 CSRF=$(tok "$TDIR/s.json" "")
 [ -n "$CSRF" ] && ok "csrf jetonu alındı" || bad "csrf jetonu alınamadı"
 curl -s -m 5 -c "$JAR" -b "$JAR" -A "$UA" -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
-  -d "{\"code\":\"DAVETDAVETJSJEJSNFJSNDJSDNFH\"}" "$BASE?action=check_invite_code" -o "$TDIR/i.json"
-curl -s -m 5 -c "$JAR" -b "$JAR" -A "$UA" -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
   -d "{\"username\":\"$UI_USER\",\"password\":\"Test123!xyz\"}" "$BASE?action=login" -o "$TDIR/l.json"
 CSRF=$(tok "$TDIR/l.json" "$CSRF")
 check_eq "giriş (API)" "True" "$(python3 -c "import json;print(json.load(open('$TDIR/l.json')).get('ok'))" 2>/dev/null)"
