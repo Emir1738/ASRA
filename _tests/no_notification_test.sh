@@ -46,8 +46,10 @@ else: print(v if not isinstance(v,(dict,list)) else json.dumps(v))" "$1" "$2"; }
 expect_absent() { # etiket, dosya, kalıp
   # Gömülü base64 görseller (data: URI) rastgele harf dizileri içerir ve
   # 'fcm' gibi kısa kalıplarda yanlış pozitif üretir; bu satırlar atlanır.
+  # Gömülü görsel verisi çok satıra bölünmüş olabilir (CSP hash'i ve okunabilirlik
+  # için): uzun base64 parçalarından oluşan satırlar da taranmaz.
   local tmp="$TDIR/scan.tmp"
-  grep -v 'data:' "$2" > "$tmp" 2>/dev/null
+  grep -v 'data:' "$2" | grep -vE "^[[:space:]]*'[A-Za-z0-9+/=]{24,}',?[[:space:]]*$" > "$tmp" 2>/dev/null
   local hits
   hits=$(grep -Eic "$3" "$tmp" 2>/dev/null || true)
   [ -z "$hits" ] && hits=0

@@ -106,9 +106,9 @@ check_eq "yazılmamışta submitted_at null" "None" "$(jget "$TDIR/p1.json" '$.p
 check_eq "yazılmamışta created_at dolu" "True" "$(python3 -c "import json;print(bool(json.load(open('$TDIR/p1.json'))['pending'][1]['created_at']))")"
 check_eq "yanıt includes_unsubmitted=True (yeni sorgu)" "True" "$(jget "$TDIR/p1.json" '$.includes_unsubmitted')"
 check_eq "yanıt total=2" "2" "$(jget "$TDIR/p1.json" '$.total')"
-check_eq "yanıt build=v34" "v34" "$(jget "$TDIR/p1.json" '$.build')"
+check_eq "yanıt build=v35" "v35" "$(jget "$TDIR/p1.json" '$.build')"
 curl -s -m 5 "$BASE?action=health" -o "$TDIR/h.json"
-check_eq "health ucu sunucu sürümünü bildirir (v34)" "v34" "$(jget "$TDIR/h.json" '$.build')"
+check_eq "health ucu sunucu sürümünü bildirir (v35)" "v35" "$(jget "$TDIR/h.json" '$.build')"
 
 echo "== 3) API: admin olmayan erişemez =="
 # uiadmin oturumu admin dogrulamasi YAPMADIGI icin 403 beklenir.

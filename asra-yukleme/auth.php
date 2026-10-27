@@ -42,13 +42,13 @@ set_error_handler(function (int $severity, string $message, string $file, int $l
 
 // Şema sürüm anahtarı: yükseltildiğinde her veritabanı kurulumu bir kez
 // yeniden çalışır (idempotenttir) ve yeni tablo/tohumlar eklenir.
-const SCHEMA_VERSION_KEY = 'schema:runtime:v21';
+const SCHEMA_VERSION_KEY = 'schema:runtime:v22';
 const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // Sunucu sürüm işareti: /auth.php?action=health yanıtında döner. Yükleme
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v34';
+const ASRA_BUILD = 'v35';
 // Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
 // göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
 // ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
@@ -1239,6 +1239,411 @@ function ensureIdentityInfra(PDO $pdo): void
  * yol açar; diğer altyapı fonksiyonlarındaki marker deseniyle
  * birebir aynı akış izlenir. Hiçbir adımda istek öldürmez.
  */
+
+/**
+ * ÖZEL ETKİNLİK ALTYAPISI (29 Ekim Cumhuriyet Bayramı vb.)
+ *
+ * Üç ayrı ayar vardır ve BİRBİRİNDEN BAĞIMSIZDIR (kullanıcı isteği):
+ *   event_theme_active  -> Özel Günler: site teması (kırmızı-beyaz) + söz şeridi
+ *   event_badges_active -> Özel Rozetler: rozetlerin satın alınabilir olması
+ *   rozetler her durumda mağazada GÖRÜNÜR; alınamıyorsa altında
+ *   "Sadece özel günler için" yazar. Kapatınca tema eski hâline döner.
+ *
+ * DDL her istekte çalışmaz: damga (schema:event:v1) tutulduysa atlanır.
+ * Ücretsiz hosting CPU kotasını korumak için markSchemaStamp deseni kullanılır.
+ */
+function ensureEventSchema(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    if (schemaStampApplied($pdo, 'schema:event:v1')) {
+        $ready = true;
+        return;
+    }
+    $tables = [
+        'event_badge_claims' => "CREATE TABLE IF NOT EXISTS event_badge_claims (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            badge_id VARCHAR(40) NOT NULL,
+            event_key VARCHAR(40) NOT NULL DEFAULT '',
+            claimed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_event_badge_user_badge (user_id, badge_id),
+            KEY idx_event_badge_badge (badge_id)
+        ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        'event_activity_days' => "CREATE TABLE IF NOT EXISTS event_activity_days (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            activity_date DATE NOT NULL,
+            source VARCHAR(20) NOT NULL DEFAULT 'session',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_event_activity_user_day (user_id, activity_date, source),
+            KEY idx_event_activity_user (user_id, activity_date)
+        ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        'event_badges' => "CREATE TABLE IF NOT EXISTS event_badges (
+            badge_id VARCHAR(40) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (badge_id)
+        ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        'event_badge_quests' => "CREATE TABLE IF NOT EXISTS event_badge_quests (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            badge_id VARCHAR(40) NOT NULL,
+            progress DECIMAL(12,1) NOT NULL DEFAULT 0.0,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_event_badge_quests_user_badge (user_id, badge_id)
+        ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        'event_badge_channels' => "CREATE TABLE IF NOT EXISTS event_badge_channels (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            room_id SMALLINT UNSIGNED NOT NULL,
+            total_messages INT UNSIGNED NOT NULL DEFAULT 1,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_event_badge_channels_user_room (user_id, room_id),
+            KEY idx_event_badge_channels_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+    ];
+    foreach ($tables as $name => $sql) {
+        safeSchemaExec($pdo, $sql, $name);
+    }
+    markSchemaStamp($pdo, 'schema:event:v1');
+    $ready = true;
+}
+
+/** Özel etkinlik / rozet ayarları (varsayılan: kapalı). */
+function eventSettings(PDO $pdo): array
+{
+    $themeOn = infoSetting($pdo, 'event_theme_active', '0') === '1';
+    $badgesOn = infoSetting($pdo, 'event_badges_active', '0') === '1';
+    return [
+        'theme_active' => $themeOn,
+        'badges_active' => $badgesOn,
+        'title' => infoSetting($pdo, 'event_title', '29 Ekim Cumhuriyet Bayramı'),
+        'theme_starts_at' => infoSetting($pdo, 'event_theme_starts_at', ''),
+        'theme_ends_at' => infoSetting($pdo, 'event_theme_ends_at', ''),
+        'badge_starts_at' => infoSetting($pdo, 'event_badge_starts_at', ''),
+        'badge_ends_at' => infoSetting($pdo, 'event_badge_ends_at', ''),
+    ];
+}
+
+/** YYYY-MM-DD (veya tam ISO) -> UTC "Y-m-d H:i:s" ya da null. */
+function eventDateValue(mixed $value): ?string
+{
+    if (!is_string($value) || trim($value) === '') {
+        return null;
+    }
+    $value = trim($value);
+    try {
+        $date = new DateTimeImmutable(strlen($value) === 10 ? $value . ' 00:00:00' : $value, new DateTimeZone('UTC'));
+    } catch (Throwable) {
+        return null;
+    }
+    return $date->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+}
+
+/** Değer boşsa kural yoktur; doluysa aralık dışıysa false. */
+function eventWithinRange(?string $startsAt, ?string $endsAt): bool
+{
+    $now = gmdate('Y-m-d H:i:s');
+    if ($startsAt !== null && $startsAt !== '' && $now < $startsAt) {
+        return false;
+    }
+    if ($endsAt !== null && $endsAt !== '' && $now > $endsAt) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Özel gün (tema) penceresi: anahtar açık VE tarih aralığı uygun.
+ * Tarihler boşsa yalnızca anahtar belirleyicidir.
+ */
+function eventThemeWindow(PDO $pdo): array
+{
+    $settings = eventSettings($pdo);
+    $open = $settings['theme_active'] && eventWithinRange(
+        eventDateValue($settings['theme_starts_at']),
+        eventDateValue($settings['theme_ends_at'])
+    );
+    return [$open, $settings];
+}
+
+/** Özel rozet penceresi: anahtar açık VE tarih aralığı uygun. */
+function eventBadgeWindow(PDO $pdo): array
+{
+    $settings = eventSettings($pdo);
+    $open = $settings['badges_active'] && eventWithinRange(
+        eventDateValue($settings['badge_starts_at']),
+        eventDateValue($settings['badge_ends_at'])
+    );
+    return [$open, $settings];
+}
+
+/**
+ * Özel rozet kataloğu. Rozetler MEVCUT çerçeve sisteminin bir parçasıdır:
+ * satın alma, envanter, takma/çıkarma akışı birebir aynıdır. Tek fark,
+ * AA Coin yerine GÖREV ile alınmaları ve yalnızca özel gün penceresinde
+ * satın alınabilmeleridir.
+ */
+function eventBadgeCatalog(): array
+{
+    return [
+        'gazi_ataturk' => [
+            'name' => 'Gazi Mustafa Kemal Atatürk Rozeti',
+            'short' => 'Atatürk Rozeti',
+            'description' => 'Gazi Mustafa Kemal Atatürk portreli özel gün rozeti. Profil fotoğrafının çevresinde görünür.',
+            'gift' => 'atalar',
+        ],
+        'turk_bayragi' => [
+            'name' => 'Türk Bayrağı Rozeti',
+            'short' => 'Türk Bayrağı Rozeti',
+            'description' => 'Ay yıldızlı özel gün rozeti. Profil fotoğrafının çevresinde dalgalanır.',
+            'gift' => 'bayrak',
+        ],
+    ];
+}
+
+function isEventBadge(string $frameId): bool
+{
+    return isset(eventBadgeCatalog()[$frameId]);
+}
+
+/**
+ * Özel rozetlerin AYNI ANDA ve TEK durumda dönen bilgisi (rozet + görev).
+ * Pencere kapalı olsa da döner: mağaza kartı kalır, yalnızca "Al" düğmesi
+ * kilitlenir ve altında "Sadece özel günler için" yazar.
+ */
+function eventBadgeQuests(PDO $pdo, array $user): array
+{
+    ensureEventSchema($pdo);
+    $catalog = eventBadgeCatalog();
+    $userId = (int) $user['id'];
+    [$windowOpen, $settings] = eventBadgeWindow($pdo);
+    $eventKey = infoSetting($pdo, 'event_key', '29ekim2026');
+
+    $badgeIds = array_keys($catalog);
+    $placeholders = implode(',', array_fill(0, count($badgeIds), '?'));
+    foreach ($badgeIds as $badgeId) {
+        ensureEventBadgeQuestRow($pdo, $badgeId);
+    }
+    foreach ($badgeIds as $badgeId) {
+        syncEventBadgeProgress($pdo, $userId, $badgeId);
+    }
+    // Tazelemeden sonra oku (ilerleme sync içinde artmış olabilir).
+    $stmt = $pdo->prepare('SELECT badge_id, progress FROM event_badge_quests WHERE user_id = ? AND badge_id IN (' . $placeholders . ')');
+    $stmt->execute(array_merge([$userId], $badgeIds));
+    $progress = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $progress[(string) $row['badge_id']] = (float) $row['progress'];
+    }
+
+    $claimed = [];
+    try {
+        $claimedStmt = $pdo->prepare('SELECT badge_id FROM event_badge_claims WHERE user_id = ?');
+        $claimedStmt->execute([$userId]);
+        $claimed = array_flip($claimedStmt->fetchAll(PDO::FETCH_COLUMN));
+    } catch (Throwable) {
+        $claimed = [];
+    }
+
+    $items = [];
+    foreach ($catalog as $badgeId => $meta) {
+        $steps = eventBadgeQuestSteps($badgeId);
+        $current = (float) ($progress[$badgeId] ?? 0);
+        $rawValues = eventBadgeStepValues($pdo, $userId, $badgeId);
+        $ready = true;
+        $stepData = [];
+        foreach ($steps as $index => $step) {
+            $target = (float) $step['target'];
+            // Gerçek değer (hedefin üstünde gösterilmez).
+            $done = min($target, (float) ($rawValues[$index] ?? 0));
+            $stepData[] = [
+                'key' => $step['key'],
+                'text' => $step['text'],
+                'progress' => (int) floor($done),
+                'target' => (int) $target,
+                'completed' => $done >= $target,
+            ];
+            if ($done < $target) {
+                $ready = false;
+            }
+        }
+        $items[] = [
+            'id' => $badgeId,
+            'is_event_badge' => true,
+            'name' => $meta['name'],
+            'short' => $meta['short'],
+            'description' => $meta['description'],
+            'gift' => $meta['gift'],
+            'steps' => $stepData,
+            'progress' => (int) floor($current),
+            'target' => (int) eventBadgeQuestTarget($badgeId),
+            'ready' => $ready,
+            'owned' => isset($claimed[$badgeId]),
+            'window_open' => $windowOpen,
+            'event_key' => $eventKey,
+            'locked_reason' => $windowOpen ? '' : 'Sadece özel günler için',
+        ];
+    }
+    return [
+        'open' => $windowOpen,
+        'event_key' => $eventKey,
+        'title' => $settings['title'],
+        'ends_at' => $settings['badge_ends_at'] ?: null,
+        'items' => $items,
+    ];
+}
+
+/** Rozet edinim eşiği: kademelerin başarıyla tamamlanması ya da fail sayacı. */
+function eventBadgeQuestTarget(string $badgeId): int
+{
+    return 2;
+}
+
+/**
+ * İki rozetin GÖREVLERİ FARKLIDIR ve "orta zorluk" hedeflenir.
+ *  - gazi_ataturk : 6 farklı kanala katkı + 30 mesaj + 200 AA Coin
+ *  - turk_bayragi : 1800 sn aktiflik + 2 gün + 2000 AA Coin + 1 oyun
+ */
+function eventBadgeQuestSteps(string $badgeId): array
+{
+    if ($badgeId === 'gazi_ataturk') {
+        return [
+            ['key' => 'g1', 'text' => 'Platformda 6 farklı kanala mesaj at', 'target' => 6],
+            ['key' => 'g2', 'text' => 'Toplam 30 mesaj gönder', 'target' => 30],
+            ['key' => 'g3', 'text' => 'Hesabında 200 AA Coin bulundur', 'target' => 200],
+        ];
+    }
+    return [
+        ['key' => 'g1', 'text' => 'Platformda toplam 30 dakika aktif ol', 'target' => 1800],
+        ['key' => 'g2', 'text' => '2 farklı günde platforma giriş yap', 'target' => 2],
+        ['key' => 'g3', 'text' => 'Hesabında 2000 AA Coin bulundur', 'target' => 2000],
+    ];
+}
+
+/**
+ * Rozet görev tabloları artık damga korumalı ensureEventSchema() içinde
+ * kurulur; burada yalnızca o kurulumun çalıştığı garanti edilir. Böylece
+ * her istekte DDL (CPU/hit maliyeti) çalışmaz.
+ */
+function ensureEventBadgeQuestTables(PDO $pdo): bool
+{
+    ensureEventSchema($pdo);
+    return true;
+}
+
+function ensureEventBadgeQuestRow(PDO $pdo, string $badgeId): void
+{
+    ensureEventBadgeQuestTables($pdo);
+    $pdo->prepare('INSERT IGNORE INTO event_badges (badge_id) VALUES (?)')->execute([$badgeId]);
+}
+
+/**
+ * Rozet görevlerinin HAM değerleri (kademe sırasıyla).
+ * KÖK NEDEN NOTU: daha önce yalnızca "tamamlanan kademe sayısı" saklanıyordu;
+ * bu yüzden kartta ilerleme "3/6" gibi yanlış görünüyordu. Artık her kademenin
+ * gerçek değeri okunur, kartta doğru sayı yazar.
+ */
+function eventBadgeStepValues(PDO $pdo, int $userId, string $badgeId): array
+{
+    if ($badgeId === 'gazi_ataturk') {
+        $channels = 0;
+        try {
+            $stmt = $pdo->prepare('SELECT COUNT(DISTINCT room_id) FROM messages WHERE user_id = ? AND room_id > 0 AND deleted_at IS NULL');
+            $stmt->execute([$userId]);
+            $channels = (int) $stmt->fetchColumn();
+        } catch (Throwable) {
+            $channels = 0;
+        }
+        $messages = 0;
+        try {
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM messages WHERE user_id = ? AND deleted_at IS NULL');
+            $stmt->execute([$userId]);
+            $messages = (int) $stmt->fetchColumn();
+        } catch (Throwable) {
+            $messages = 0;
+        }
+        $stmt = $pdo->prepare('SELECT aa_coins FROM users WHERE id = ?');
+        $stmt->execute([$userId]);
+        $coins = (int) floor(max(0, coinAmount($stmt->fetchColumn())));
+        return [$channels, $messages, $coins];
+    }
+    // Türk Bayrağı Rozeti
+    $seconds = 0;
+    try {
+        $stmt = $pdo->prepare('SELECT COALESCE(SUM(active_seconds),0) FROM aa_daily_activity WHERE user_id = ?');
+        $stmt->execute([$userId]);
+        $seconds = (int) $stmt->fetchColumn();
+    } catch (Throwable) {
+        $seconds = 0;
+    }
+    $days = 0;
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT COUNT(*) FROM (
+                SELECT DATE(created_at) AS d FROM messages WHERE user_id = ? AND deleted_at IS NULL
+                UNION
+                SELECT activity_date AS d FROM aa_daily_activity WHERE user_id = ?
+                UNION
+                SELECT activity_date AS d FROM event_activity_days WHERE user_id = ?
+             ) AS gunler'
+        );
+        $stmt->execute([$userId, $userId, $userId]);
+        $days = (int) $stmt->fetchColumn();
+    } catch (Throwable) {
+        $days = 0;
+    }
+    $stmt = $pdo->prepare('SELECT aa_coins FROM users WHERE id = ?');
+    $stmt->execute([$userId]);
+    $coins = (int) floor(max(0, coinAmount($stmt->fetchColumn())));
+    return [$seconds, $days, $coins];
+}
+
+/**
+ * Rozet görev ilerlemesini canlı verilerden yeniden hesaplar ve yalnızca
+ * "tamamlanan kademe sayısı"nı saklar (ödül kapısı bu sayıdır; ilerleme
+ * çubuğunun metni için eventBadgeStepValues() kullanılır).
+ *
+ * ÖNEMLİ: "toplam mesaj", "farklı kanal", "aktif süre" gibi sayımlar
+ * kullanıcının etkinlik ÖNCESİNDE yaptıklarıyla da dolabilir; bu yüzden
+ * görevler "bugünden itibaren" değil, hesabın bütün geçmişi üzerinden
+ * sayılır. Coin şartı ise anlık bakiyedir (harcarsan düşer) — görev
+ * kartında bu açıkça yazar.
+ */
+function syncEventBadgeProgress(PDO $pdo, int $userId, string $badgeId): void
+{
+    ensureEventBadgeQuestTables($pdo);
+    $steps = eventBadgeQuestSteps($badgeId);
+    $values = eventBadgeStepValues($pdo, $userId, $badgeId);
+    $done = 0;
+    foreach ($steps as $index => $step) {
+        if ((int) ($values[$index] ?? 0) >= (int) $step['target']) {
+            $done++;
+        }
+    }
+    $pdo->prepare(
+        'INSERT INTO event_badge_quests (user_id, badge_id, progress) VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE progress = GREATEST(progress, VALUES(progress))'
+    )->execute([$userId, $badgeId, $done]);
+}
+
+/** Oturum açan kullanıcı için "bugün platforma girdi" izi (görev 1/2). */
+function markEventActivityToday(PDO $pdo, int $userId): void
+{
+    ensureEventSchema($pdo);
+    try {
+        $pdo->prepare('INSERT IGNORE INTO event_activity_days (user_id, activity_date, source) VALUES (?, UTC_DATE(), ?)')
+            ->execute([$userId, 'session']);
+    } catch (Throwable $error) {
+        error_log('[event] activity mark skipped: ' . $error->getMessage());
+    }
+}
+
 function sessionCookieOptions(): array
 {
     $params = session_get_cookie_params();
@@ -1436,7 +1841,7 @@ function respond(array $payload = [], int $status = 200): never
 
 function closeSessionEarlyForReads(string $action): void
 {
-    static $readActions = ['session','get_rooms','get_messages','get_message_views','get_user_profile','admin_search_users','admin_pending_approvals','get_economy','get_quests','heartbeat','get_banned_info','get_media','media','info_items','info_forms','info_form_replies','complaint_quota','admin_feed_status','admin_complaints'];
+    static $readActions = ['session','get_rooms','get_messages','get_message_views','get_user_profile','admin_search_users','admin_pending_approvals','get_economy','get_quests','heartbeat','get_banned_info','get_media','media','info_items','info_forms','info_form_replies','complaint_quota','admin_feed_status','admin_complaints','admin_event_status'];
     if (!in_array($action, $readActions, true)) return;
     if (session_status() === PHP_SESSION_ACTIVE) {
         try { session_write_close(); } catch (Throwable $e) {}
@@ -3121,6 +3526,16 @@ function actionSession(PDO $pdo): never
             // Hit koruması kalıcıdır: istemci (web) yoklama aralıklarını bu
             // bayrağa göre kalıcı olarak yavaş ritimde tutar.
             $payload['hit_economy'] = true;
+            // Özel gün bilgisi HER oturum yanıtında döner: tema/söz şeridi
+            // ve rozet penceresi istemcide ekstra istek üretmeden çizilir.
+            [$themeOpen, $eventSettings] = eventThemeWindow($pdo);
+            $payload['event'] = [
+                'theme_active' => $themeOpen,
+                'theme_key' => $eventSettings['title'],
+                'ends_at' => $eventSettings['theme_ends_at'] ?: null,
+            ];
+            // "2 farklı günde giriş" rozet görevi için gün izi (INSERT IGNORE).
+            markEventActivityToday($pdo, (int) $user['id']);
             consumeApprovalDecisionNotice($pdo, $user);
         } catch (ApiError $error) {
             if ($error->errorCode === 'APPROVAL_PENDING') {
@@ -3268,7 +3683,15 @@ function actionLogin(PDO $pdo, array $data): never
             ],
             'user' => publicUser($user),
             'csrf_token' => $_SESSION['csrf_token'],
-        ]);
+            'event' => (static function (PDO $pdo): array {
+                [$open, $settings] = eventThemeWindow($pdo);
+                return [
+                    'theme_active' => $open,
+                    'theme_key' => $settings['title'],
+                    'ends_at' => $settings['theme_ends_at'] ?: null,
+                ];
+            })($pdo),
+]);
     }
     assertDeviceMayUseAccount($pdo, (int) $user['id']);
     $ban = activeBan($pdo, (int) $user['id']);
@@ -3297,7 +3720,18 @@ function actionLogin(PDO $pdo, array $data): never
     $pdo->prepare('UPDATE users SET last_seen = UTC_TIMESTAMP(), online_status = 1, last_activity_counted_at = UTC_TIMESTAMP() WHERE id = ?')->execute([$user['id']]);
     rememberDeviceForUser($pdo, (int) $user['id'], $user['username']);
     issueRememberToken($pdo, (int) $user['id'], (int) ($user['session_version'] ?? 1));
-    respond(['message' => 'Giriş başarılı.', 'user' => publicUser($user)]);
+    // Özel gün teması GİRİŞ yanıtında da döner: kullanıcı çıkışta giriş
+    // ekranındayken etkinlik açıldıysa giriş yapar yapmaz tema uygulanır.
+    [$eventThemeOpen, $eventSettings] = eventThemeWindow($pdo);
+    respond([
+        'message' => 'Giriş başarılı.',
+        'user' => publicUser($user),
+        'event' => [
+            'theme_active' => $eventThemeOpen,
+            'theme_key' => $eventSettings['title'],
+            'ends_at' => $eventSettings['theme_ends_at'] ?: null,
+        ],
+    ]);
 }
 
 function actionLogout(PDO $pdo): never
@@ -3606,6 +4040,22 @@ function actionGetUserProfile(PDO $pdo): never
     }
     $isOwn = $userId === (int) $viewer['id'];
     $canShowPresence = $isOwn || (bool) $profile['show_last_seen'];
+    // Kullanıcının kazandığı özel gün rozetleri (profilde şerit olarak çizilir).
+    // Alınmış rozet, etkinlik kapansa da profilde görünür ve takılı kalabilir.
+    $earnedBadges = [];
+    try {
+        ensureEventSchema($pdo);
+        $badgeStmt = $pdo->prepare('SELECT badge_id FROM event_badge_claims WHERE user_id = ?');
+        $badgeStmt->execute([$userId]);
+        $catalog = eventBadgeCatalog();
+        foreach ($badgeStmt->fetchAll(PDO::FETCH_COLUMN) as $badgeId) {
+            if (isset($catalog[$badgeId])) {
+                $earnedBadges[] = ['id' => (string) $badgeId, 'name' => $catalog[$badgeId]['short'], 'gift' => $catalog[$badgeId]['gift']];
+            }
+        }
+    } catch (Throwable $error) {
+        $earnedBadges = [];
+    }
     $lastSeenTime = $profile['last_seen'] ? strtotime($profile['last_seen'] . ' UTC') : null;
     $availableAt = $profile['last_username_change'] ? strtotime($profile['last_username_change'] . ' UTC') + 30 * 86400 : null;
     respond(['profile' => [
@@ -3622,6 +4072,7 @@ function actionGetUserProfile(PDO $pdo): never
         'presence_hidden' => !$canShowPresence,
         'is_own' => $isOwn,
         'username_change_available_at' => $availableAt && $availableAt > time() ? gmdate(DateTimeInterface::ATOM, $availableAt) : null,
+        'event_badges' => $earnedBadges,
     ]]);
 }
 
@@ -4585,9 +5036,40 @@ function actionGetEconomy(PDO $pdo): never
             'active' => ($user['active_profile_frame'] ?? null) === $id,
         ];
     }
+    // ÖZEL GÜN ROZETLERİ: fiyatları yoktur (AA Coin ile alınmazlar). Mağaza
+    // kartları pencere kapalı olsa bile döner; "Al" düğmesi istemcide kilitlenir
+    // ve altında "Sadece özel günler için" yazar.
+    $badgeState = eventBadgeQuests($pdo, $user);
+    $eventBadges = [];
+    foreach ($badgeState['items'] as $badge) {
+        $eventBadges[] = [
+            'id' => $badge['id'],
+            'is_event_badge' => true,
+            'name' => $badge['name'],
+            'short' => $badge['short'],
+            'description' => $badge['description'],
+            'emoji' => $badge['gift'] === 'bayrak' ? '🇹🇷' : '🎖️',
+            'gift' => $badge['gift'],
+            'steps' => $badge['steps'],
+            'ready' => $badge['ready'],
+            'owned' => $badge['owned'] || isset($owned[$badge['id']]),
+            'active' => ($user['active_profile_frame'] ?? null) === $badge['id'],
+            'window_open' => $badge['window_open'],
+            'locked_reason' => $badge['locked_reason'],
+            'price' => null,
+        ];
+    }
+    [$themeOpen] = eventThemeWindow($pdo);
     respond([
         'wallet' => ['aa_coins' => coinAmount($user['aa_coins'] ?? 0)],
         'items' => $items,
+        'event_badges' => $eventBadges,
+        'event' => [
+            'badges_active' => $badgeState['open'],
+            'theme_active' => $themeOpen,
+            'title' => $badgeState['title'],
+            'badge_ends_at' => $badgeState['ends_at'],
+        ],
         'price_rotation_at' => nextHourIso(),
         'user' => publicUser($user),
     ]);
@@ -4597,6 +5079,12 @@ function actionBuyFrame(PDO $pdo, array $data): never
 {
     $user = requireUser($pdo);
     $frameId = cleanText($data['frame_id'] ?? null, 'Çerçeve', 40);
+
+    // --- ÖZEL GÜN ROZETİ: AA Coin ile alınmaz, GÖREV ile alınır ---
+    if (isEventBadge($frameId)) {
+        actionClaimEventBadge($pdo, $user, $frameId);
+    }
+
     $catalog = frameCatalog();
     if (!isset($catalog[$frameId])) {
         throw new ApiError(404, 'FRAME_NOT_FOUND', 'Çerçeve bulunamadı.');
@@ -4626,11 +5114,87 @@ function actionBuyFrame(PDO $pdo, array $data): never
     respond(['message' => 'Çerçeve satın alındı ve takıldı.', 'user' => publicUser($fresh), 'wallet' => ['aa_coins' => coinAmount($fresh['aa_coins'] ?? 0)]]);
 }
 
+/**
+ * ÖZEL GÜN ROZETİNİ AL (görev tamamlandıysa).
+ *
+ * Kurallar:
+ *  - Özel rozet penceresi AÇIK olmalı (admin anahtarı + tarih aralığı).
+ *  - Rozetin BÜTÜN görev kademeleri tamamlanmış olmalı.
+ *  - Rozet aynı etkinlikte bir kez alınır: tekrar alınırsa mevcut kopya döner.
+ *  - Alınan rozet, normal çerçeve envanterine (aa_frame_purchases) yazılır;
+ *    böylece takma/çıkarma akışı mevcut çerçeve sistemiyle birebir aynıdır.
+ *  - Pencere KAPANDIĞINDA yeni rozet alınamaz; önceden alınmış rozet
+ *    envanterde kalır ve takılı kalabilir (kullanıcı isteği).
+ */
+function actionClaimEventBadge(PDO $pdo, array $user, string $badgeId): never
+{
+    $catalog = eventBadgeCatalog();
+    if (!isset($catalog[$badgeId])) {
+        throw new ApiError(404, 'BADGE_NOT_FOUND', 'Rozet bulunamadı.');
+    }
+    [$windowOpen, $settings] = eventBadgeWindow($pdo);
+    $userId = (int) $user['id'];
+    ensureEventSchema($pdo);
+
+    // Daha önce alınmış mı?
+    $owned = $pdo->prepare('SELECT 1 FROM event_badge_claims WHERE user_id = ? AND badge_id = ?');
+    $owned->execute([$userId, $badgeId]);
+    if ($owned->fetchColumn()) {
+        // Envanterde yoksa (eski kayıt) tamamla; sonra bilgi ver.
+        $pdo->prepare('INSERT IGNORE INTO aa_frame_purchases (user_id, frame_id, price_paid) VALUES (?, ?, 0)')
+            ->execute([$userId, $badgeId]);
+        throw new ApiError(409, 'BADGE_ALREADY_CLAIMED', 'Bu rozet zaten envanterinde.');
+    }
+    if (!$windowOpen) {
+        throw new ApiError(409, 'EVENT_CLOSED', 'Bu rozet yalnızca özel günlerde alınabilir. Etkinlik penceresi şu anda kapalı.');
+    }
+
+    syncEventBadgeProgress($pdo, $userId, $badgeId);
+    $stmt = $pdo->prepare('SELECT progress FROM event_badge_quests WHERE user_id = ? AND badge_id = ?');
+    $stmt->execute([$userId, $badgeId]);
+    $progress = (float) ($stmt->fetchColumn() ?: 0);
+    if ($progress < eventBadgeQuestTarget($badgeId)) {
+        throw new ApiError(409, 'BADGE_QUEST_INCOMPLETE', 'Rozetin görevleri henüz tamamlanmadı.');
+    }
+
+    $eventKey = infoSetting($pdo, 'event_key', '29ekim2026');
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare('INSERT INTO event_badge_claims (user_id, badge_id, event_key) VALUES (?, ?, ?)')
+            ->execute([$userId, $badgeId, $eventKey]);
+        $pdo->prepare('INSERT IGNORE INTO aa_frame_purchases (user_id, frame_id, price_paid) VALUES (?, ?, 0)')
+            ->execute([$userId, $badgeId]);
+        $pdo->commit();
+    } catch (PDOException $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if ((string) $error->getCode() === '23000') {
+            throw new ApiError(409, 'BADGE_ALREADY_CLAIMED', 'Bu rozet zaten envanterinde.');
+        }
+        throw $error;
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $error;
+    }
+    $fresh = currentUserFresh($pdo, $userId);
+    respond([
+        'message' => 'Rozet kazanıldı: ' . $catalog[$badgeId]['name'] . '. Mağazadan takabilirsin.',
+        'badge_id' => $badgeId,
+        'user' => publicUser($fresh),
+        'wallet' => ['aa_coins' => coinAmount($fresh['aa_coins'] ?? 0)],
+    ]);
+}
+
 function actionEquipFrame(PDO $pdo, array $data): never
 {
     $user = requireUser($pdo);
     $frameId = cleanText($data['frame_id'] ?? '', 'Çerçeve', 40, false);
-    if ($frameId !== '' && !isset(frameCatalog()[$frameId])) {
+    // Özel gün rozetleri de birer çerçevedir: takma/çıkarma aynı uçtan geçer.
+    $knownFrames = frameCatalog() + eventBadgeCatalog();
+    if ($frameId !== '' && !isset($knownFrames[$frameId])) {
         throw new ApiError(404, 'FRAME_NOT_FOUND', 'Çerçeve bulunamadı.');
     }
     if ($frameId !== '') {
@@ -6289,6 +6853,95 @@ function actionAdminComplaintReject(PDO $pdo, array $data): never
 //  (BİLGİ ODASI eylemleri sonu — aşağıda dispatch'e bağlanır)
 // ============================================================================
 
+// ============================================================================
+//  ÖZEL GÜNLER / ÖZEL ROZETLER — yetkili panel uçları
+// ============================================================================
+
+/** Yetkili panel: özel gün durumunu ve kısa istatistikleri döndürür. */
+function actionAdminEventStatus(PDO $pdo): never
+{
+    requireAdmin($pdo);
+    [, $settings] = eventThemeWindow($pdo);
+    [$badgesOpen] = eventBadgeWindow($pdo);
+    ensureEventSchema($pdo);
+    $stats = [];
+    foreach (eventBadgeCatalog() as $badgeId => $meta) {
+        try {
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM event_badge_claims WHERE badge_id = ?');
+            $stmt->execute([$badgeId]);
+            $stats[$badgeId] = (int) $stmt->fetchColumn();
+        } catch (Throwable) {
+            $stats[$badgeId] = 0;
+        }
+    }
+    respond([
+        'settings' => [
+            'theme_active' => $settings['theme_active'],
+            'badges_active' => $settings['badges_active'],
+            'title' => $settings['title'],
+            'event_key' => infoSetting($pdo, 'event_key', '29ekim2026'),
+            'theme_starts_at' => $settings['theme_starts_at'],
+            'theme_ends_at' => $settings['theme_ends_at'],
+            'badge_starts_at' => $settings['badge_starts_at'],
+            'badge_ends_at' => $settings['badge_ends_at'],
+        ],
+        'effective' => [
+            'theme_open' => eventThemeWindow($pdo)[0],
+            'badges_open' => $badgesOpen,
+            'now' => gmdate(DateTimeInterface::ATOM),
+        ],
+        'claims' => $stats,
+        'catalog' => array_map(static fn(array $meta, string $id): array => [
+            'id' => $id,
+            'name' => $meta['name'],
+            'steps' => array_map(static fn(array $step): array => ['text' => $step['text'], 'target' => (int) $step['target']], eventBadgeQuestSteps($id)),
+        ], eventBadgeCatalog(), array_keys(eventBadgeCatalog())),
+    ]);
+}
+
+/** Yetkili panel: özel gün anahtarlarını/tarihlerini kaydeder. */
+function actionAdminEventSettings(PDO $pdo, array $data): never
+{
+    requireAdmin($pdo);
+    $themeActive = filter_var($data['theme_active'] ?? false, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+    $badgesActive = filter_var($data['badges_active'] ?? false, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+    if ($themeActive === null || $badgesActive === null) {
+        throw new ApiError(422, 'VALIDATION_ERROR', 'Özel gün anahtarları geçersiz.');
+    }
+    $title = cleanText($data['title'] ?? '29 Ekim Cumhuriyet Bayramı', 'Etkinlik adı', 120, false);
+    $eventKey = cleanText($data['event_key'] ?? '29ekim2026', 'Etkinlik anahtarı', 40, false);
+    $eventKey = preg_replace('/[^a-zA-Z0-9_\-]/', '', $eventKey) ?: '29ekim2026';
+
+    $themeStart = eventDateValue($data['theme_starts_at'] ?? '');
+    $themeEnd = eventDateValue($data['theme_ends_at'] ?? '');
+    $badgeStart = eventDateValue($data['badge_starts_at'] ?? '');
+    $badgeEnd = eventDateValue($data['badge_ends_at'] ?? '');
+    foreach ([['Tema başlangıcı', $themeStart, $themeEnd], ['Rozet başlangıcı', $badgeStart, $badgeEnd]] as [$label, $start, $end]) {
+        if ($start !== null && $end !== null && $end < $start) {
+            throw new ApiError(422, 'EVENT_DATE_ORDER', $label . ' bitiş tarihi başlangıçtan önce olamaz.');
+        }
+    }
+    infoSetSetting($pdo, 'event_theme_active', $themeActive ? '1' : '0');
+    infoSetSetting($pdo, 'event_badges_active', $badgesActive ? '1' : '0');
+    infoSetSetting($pdo, 'event_title', $title !== '' ? $title : '29 Ekim Cumhuriyet Bayramı');
+    infoSetSetting($pdo, 'event_key', $eventKey);
+    infoSetSetting($pdo, 'event_theme_starts_at', $themeStart ?? '');
+    infoSetSetting($pdo, 'event_theme_ends_at', $themeEnd ?? '');
+    infoSetSetting($pdo, 'event_badge_starts_at', $badgeStart ?? '');
+    infoSetSetting($pdo, 'event_badge_ends_at', $badgeEnd ?? '');
+    $message = 'Özel gün ayarları kaydedildi.';
+    if (!$badgesActive || !$themeActive) {
+        $message .= ' Kapalı olan bölümler kullanıcıya kilitli görünür.';
+    }
+    respond([
+        'message' => $message,
+        'theme_active' => $themeActive,
+        'badges_active' => $badgesActive,
+        'theme_open' => eventThemeWindow($pdo)[0],
+        'badges_open' => eventBadgeWindow($pdo)[0],
+    ]);
+}
+
 function dispatch(): never
 {
     bootWebSession();
@@ -6302,6 +6955,7 @@ function dispatch(): never
         'complaint_submit',
         'admin_feed_refresh', 'admin_feed_settings',
         'admin_info_article_create', 'admin_info_article_update', 'admin_info_article_delete',
+        'admin_event_settings',
         'admin_complaint_reject',
     ];
     $isPostAction = in_array($action, $postActions, true);
@@ -6315,6 +6969,13 @@ function dispatch(): never
         requireCsrf();
     }
     $pdo = db();
+    // Özel gün altyapısı (rozet tabloları): damga ile korunur; kurulduktan
+    // sonra her istekte DDL çalışmaz. Hata isteği asla öldürmez.
+    try {
+        ensureEventSchema($pdo);
+    } catch (Throwable $error) {
+        error_log('[event] schema skipped: ' . $error->getMessage());
+    }
     if (empty($_SESSION['user_id'])) {
         // Sunucu oturumu kaybolduysa (güncelleme, oturum temizliği, yeniden başlatma)
         // kullanıcı sessizce geri yüklenir; kimse hesabından düşmez.
@@ -6419,6 +7080,8 @@ function dispatch(): never
         'admin_info_article_delete' => actionAdminInfoArticleDelete($pdo, $data),
         'admin_complaints' => actionAdminComplaints($pdo),
         'admin_complaint_reject' => actionAdminComplaintReject($pdo, $data),
+        'admin_event_status' => actionAdminEventStatus($pdo),
+        'admin_event_settings' => actionAdminEventSettings($pdo, $data),
         default => throw new ApiError(404, 'ACTION_NOT_FOUND', 'İstek tanınmadı: ' . $action),
     };
 }

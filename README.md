@@ -1,5 +1,50 @@
 # GitHub kaynak paketi · ASRA 1.7.3
 
+## 29 EKİM ÖZEL GÜN PAKETİ (build v35)
+
+**Kapsam:** Özel gün teması (kırmızı-beyaz + Atatürk sözleri), iki özel gün
+rozeti (Gazi Mustafa Kemal Atatürk / Türk Bayrağı) ve görev sistemi, yetkili
+panelde iki AYRI anahtar (Özel Günler teması ve Özel Rozetler), profil
+avatarındaki rozet taşma hatasının düzeltmesi.
+
+- **İki bağımsız anahtar:** `Özel Günler (tema)` siteyi kırmızı-beyaz temaya
+  ve ana ekrandaki söz şeridine geçirir; kapatınca site TAMAMEN eski
+  görünümüne döner (kullanıcının koyu/açık tercihi korunur).
+  `Özel Rozetler` rozetlerin görevle ALINABİLİR olmasını açıp kapatır.
+  Anahtarlar ayrıca tarih penceresiyle (`event_*_starts_at/ends_at`, UTC)
+  sınırlanabilir; tarih boşsa yalnızca anahtar belirleyicidir.
+- **Rozetler her durumda mağazada:** pencere kapalıyken kart KALIR, "Al"
+  düğmesi kilitlenir ve altında "🔒 Sadece özel günler için" yazar. Alınmış
+  rozetler etkinlik bitse de envanterde ve profilde kalır, takılı kalabilir.
+- **Görevler (ikisi farklı, orta zorluk):**
+  Atatürk rozeti → 6 farklı kanala mesaj + toplam 30 mesaj + 200 AA Coin.
+  Türk Bayrağı → toplam 30 dk aktiflik + 2 farklı günde giriş + 2000 AA Coin.
+  Kartta her görevin GERÇEK ilerlemesi (12/30) ve ilerleme çubuğu görünür.
+  "Toplam mesaj/kanal/aktif süre" hesabın geçmişinden sayılır; coin şartı
+  anlık bakiyedir.
+- **Mevcut çerçeve sistemi kullanılır:** rozet, `aa_frame_purchases`
+  envanterine yazılır; takma/çıkarma `equip_frame` ile birebir aynıdır.
+  Yeni uçlar: `admin_event_status` (GET), `admin_event_settings` (POST);
+  `get_economy` yanıtına `event_badges` + `event` alanları eklendi.
+- **Yeni tablolar (SQL yüklemek gerekmez):** `event_badge_claims`,
+  `event_badge_quests`, `event_badges`, `event_activity_days`,
+  `event_badge_channels`. DDL damga korumalıdır (`schema:event:v1`) —
+  her istekte çalışmaz.
+- **Avatar taşma hatası:** çerçeve işareti/madalyonu negatif konumla avatar
+  kutusunun dışına taşıyordu. `.avatar-frame-wrap` sarmalayıcısı eklendi;
+  profil rozet madalyonu artık kutunun içinde kalır. Kendi profilinde
+  "fotoğraf değiştir" rozetiyle çakışmaması için madalyon sol-üsttedir.
+- **CSP:** tema ve rozet stilleri mevcut `<style>` bloğuna eklendi, hash'ler
+  güncellendi. JS'te inline `style` kullanılmadı (CSP onu engeller):
+  ilerleme çubuğu `data-percent` + CSS ile çizilir.
+- **Portre:** kamu malı (public domain) bir Atatürk fotoğrafından üretilen
+  dairesel madalyon sayfaya gömülüdür (data: URI, dış istek yok).
+- **Testler:** tam paket 685/685 geçti. Değişen test dosyaları:
+  `_tests/approval_visibility_test.sh` (build v35 beklentisi) ve
+  `_tests/no_notification_test.sh` (çok satıra bölünmüş gömülü görsel
+  satırlarının taranmaması — "fcm" yanlış pozitifi).
+
+
 **Bu kopya canlı dağıtım dosyası değildir.** `auth.php` yalnızca
 `ASRA_DB_DSN`, `ASRA_DB_USER`, `ASRA_DB_PASSWORD` sunucu ortam değişkenleri
 sağlanırsa veritabanına bağlanır. Canlı veritabanı parolası, GitHub tokenı ve
@@ -11,7 +56,7 @@ ayrıca güvenli yöntemle temizleyin. Android APK'sı aynı eski imzayla günce
 
 Site (PHP) + Android uygulaması (WebView, Kotlin) + tam E2E test altyapısı.
 
-## Sürüm 1.7.3 (versionCode 30)
+## Sürüm 1.7.3 (versionCode 30) — sunucu build **v35**
 
 - **Geri tuşu kilitlenmez:** WebView yanıtı gelmezse zaman aşımıyla çıkar;
   renderer yeniden kurulurken/sayfa değişirken eski callback yeni ekrana işlemez.
@@ -153,7 +198,7 @@ açıkça engellenmiştir.
   (3) sunucudaki `auth.php` eskiyse (yanıtta `includes_unsubmitted` yoksa)
   liste sessizce boş kalmıyor, moderatöre hangi dosyayı yükleyeceğini söyleyen
   uyarı çıkıyor. Sunucu sürümü `?action=health` yanıtındaki `build` alanından
-  doğrulanır (bu paket sunucusu: `v34`).
+  doğrulanır (bu paket sunucusu: `v35`).
 - **Hit koruması (kalıcı):** sıcak okuma varsayılanı 180/dk (tavan 600),
   oturum başına 90/dk + uç bazlı limitler. Eski davetiye/erişim kodu kapısı yok.
 - **Güvenli oturum:** hatırla-token ile sessiz oturum kurtarma (uygulama
@@ -161,8 +206,8 @@ açıkça engellenmiştir.
   uygulama kimliğiyle.
 - **CSP:** inline style/script SHA-256 hash'li (katı) ve `connect-src 'self'` —
   üçüncü taraf hiçbir kaynağa bağlantı açılmaz.
-  Güncel hash'ler — style: `gT23H7Z65O0iV+qpYm3GQr3XjxyJoMMxSiXezgxjiDQ=`,
-  script: `0/Pa/48WRGufSgYL01wEH6nnNVYaxxeuSgPVIF+gDZc=`.
+  Güncel hash'ler — style: `f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w=`,
+  script: `/kFtz98lyrYGBps6wrf/0P8nidGO3ujxj/muUQfHyi8=`.
   CSS/JS her değiştiğinde `bash _tests/csp_hash_check.sh asra-site-fix/index.html`
   çalıştırılmalı; hash tutmazsa sayfa tarayıcıda tamamen çalışmaz.
 

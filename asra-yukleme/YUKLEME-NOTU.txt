@@ -1,15 +1,112 @@
-ASRA 1.7.3 — GITHUB KAYNAK PAKETİ (canlı parola içermez)
+ASRA 1.7.3 + 29 EKİM ÖZEL GÜN PAKETİ — YÜKLEME NOTU
+====================================================
 
-Android APK: v2/v3 imzalı, versionCode 30. Mevcut 1.7.1/1.7.2
-kurulumuna aynı sertifikayla güncelleme olarak yüklenir.
+Sürüm işareti: auth.php?action=health  ->  "build":"v35"
+Şema sürümü  : schema:runtime:v22  (site_settings, event_* tabloları)
 
-asra-1.7.3.apk: 718560 bayt · SHA-256 a08b7323aae2233aa6c18223fcde518141002f8b1b9bb872fea740319e55f996
-auth.php: 306508 bayt · SHA-256 6bdcd39fb347aeb601e6eddde5c4277779604f030e17c62a6edff9903e09cdfc
-index.html: 432348 bayt · SHA-256 1e4fe8288e2b3aeabee12685bbb7590798455d4ffa9e67fd8731ca89e357ac31
+Bu pakette 3 dosya vardır ve ÜÇÜ BİRLİKTE yüklenir:
+  auth.php     (API — yeni uçlar ve rozet görev motoru)
+  index.html   (arayüz — tema, söz şeridi, mağaza rozetleri, admin sekmesi)
+  .htaccess    (değişmedi; pakette duruyor diye gerekiyorsa yüklenir)
 
-Sunucu: auth.php + index.html + .htaccess birlikte yüklenir; ancak
-önce sunucu ortamında ASRA_DB_DSN, ASRA_DB_USER ve
-ASRA_DB_PASSWORD tanımlanmalıdır. GitHub'daki auth.php
-üretim veritabanı parolası içermez. Anahtarı veya tokenı repoya
-koymayın. İmza için yerel asra-release.jks ve git dışı ortam
-değişkenleri gerekir. 1.7.2 APK dosyası paketten çıkarıldı.
+--------------------------------------------------------------------------
+1) YÜKLEME
+--------------------------------------------------------------------------
+1. Sunucuda ASRA_DB_DSN / ASRA_DB_USER / ASRA_DB_PASSWORD ortam
+   değişkenleri tanımlı olmalı (önceki kurulumda zaten var).
+2. auth.php ve index.html dosyalarını BELGE KÖKÜNE yükle (üzerine yaz).
+3. Yükledikten sonra tarayıcıda aç:
+      https://asra.42web.io/auth.php?action=health
+   Yanıtta "build":"v35" görüyorsan doğru dosya sunucudadır.
+   (v34 görüyorsan eski auth.php hâlâ orada; hosting önbelleğini temizle.)
+
+SQL YÜKLEMEK GEREKMEZ. Yeni tablolar ilk istekte kendiliğinden kurulur:
+  event_badge_claims, event_activity_days, event_badges,
+  event_badge_quests, event_badge_channels
+ve site_settings'e event_* anahtarları yazılır.
+
+--------------------------------------------------------------------------
+2) ETKİNLİĞİ AÇMA (Admin Paneli > Özel Günler)
+--------------------------------------------------------------------------
+Admin Paneli > "Özel Günler" sekmesi. İKİ AYRI ANAHTAR vardır ve
+BİRBİRİNDEN BAĞIMSIZDIR:
+
+  [ ] Özel Günler (tema) — Aç / Kapat
+      Açıkken: site kırmızı-beyaz temaya geçer, ana ekranda
+      "29 Ekim Cumhuriyet Bayramı" şeridi + Atatürk'ün sözleri görünür
+      ("Başka bir söz" düğmesiyle değişir). Kapatınca site TAMAMEN eski
+      görünümüne döner; kullanıcıların koyu/açık tema tercihi korunur.
+
+  [ ] Özel Rozetler — Aç / Kapat
+      Açıkken: 2 özel rozet GÖREVLE alınabilir.
+      Kapalıyken: rozetler mağazada DURMAYA DEVAM EDER ama "Al" düğmesi
+      kilitlidir ve altında "🔒 Sadece özel günler için" yazar.
+
+Tarih alanları (boş bırakılırsa yalnızca anahtar belirleyicidir):
+  Tema başlangıcı / bitişi, Rozet başlangıcı / bitişi.
+  29 Ekim 2026 için önerilen (UTC):
+      Tema   : 2026-10-27  ->  2026-10-30
+      Rozet  : 2026-10-27  ->  2026-10-30
+  30 Ekim 2026 00:00 UTC'den sonra rozetler kendiliğinden kilitlenir
+  (anahtarı elle kapatmana gerek kalmaz, ama kapatabilirsin de).
+  ÖNEMLİ: tarihler UTC'dir. Türkiye saati UTC+3 olduğu için
+  "2026-10-30" yazarsan kapanış 30 Ekim 03:00 (TR) olur.
+
+Etkinlik adı ve "Etkinlik anahtarı" (event_key) alanları da düzenlenebilir;
+event_key yalnızca kayıt/izleme içindir (29ekim2026 varsayılan).
+
+--------------------------------------------------------------------------
+3) ROZETLER VE GÖREVLER (ikisinin görevi FARKLIDIR)
+--------------------------------------------------------------------------
+Mağaza > "Özel Gün Rozetleri" bölümünde iki kart vardır. Kartta görev
+listesi, her görevin gerçek ilerlemesi (örn. 12/30) ve ilerleme çubuğu
+görünür. Görevler tamamlanınca "Görevi Tamamla ve Al" düğmesiyle rozet
+envantere girer; sonra normal çerçeveler gibi "Tak" / "Çıkart" edilir.
+
+1) GAZİ MUSTAFA KEMAL ATATÜRK ROZETİ
+   • Platformda 6 farklı kanala mesaj at
+   • Toplam 30 mesaj gönder
+   • Hesabında 200 AA Coin bulundur
+   Ödül: profil fotoğrafının çevresinde kırmızı-beyaz çerçeve + Atatürk
+   portreli madalyon.
+
+2) TÜRK BAYRAĞI ROZETİ
+   • Platformda toplam 30 dakika aktif ol (1800 sn)
+   • 2 farklı günde platforma giriş yap
+   • Hesabında 2000 AA Coin bulundur
+   Ödül: beyaz-kırmızı çerçeve + ay yıldızlı madalyon.
+
+Nasıl sayılır (dürüst notlar):
+  • "Toplam mesaj", "farklı kanal", "aktif süre" hesabın GEÇMİŞİ üzerinden
+    sayılır (etkinlik başlamadan önce yazdığın mesajlar da sayılır).
+  • Coin şartı ANLIK bakiyedir: rozeti aldıktan sonra harcarsan sorun olmaz,
+    ama ALMADAN önce bakiyenin şartı karşılaması gerekir.
+  • Rozet bir kez alınır; aynı etkinlikte ikinci kez alınamaz.
+  • Etkinlik kapandıktan sonra ALINMIŞ rozetler envanterde ve profilde
+    kalır, takılı kalabilir. Yalnızca YENİ alım kilitlenir.
+  • Görevler ilerledikçe veritabanında saklanır; sayfa yenilemek sıfırlamaz.
+
+--------------------------------------------------------------------------
+4) PROFİL ROZET HATASI (taşma) — DÜZELTİLDİ
+--------------------------------------------------------------------------
+Şikayet: profil fotoğrafı yuvarlak kutunun dışına taşıyor / rozet işareti
+kırpılıyordu. Kök neden: çerçeve işareti (::after) avatarın kutusuna göre
+negatif konumla yerleştiriliyordu ve bazı ekranlarda kırpılıyordu.
+Çözüm: taşıma payı olan bir sarmalayıcı (.avatar-frame-wrap) eklendi;
+profildeki rozet madalyonu artık kutunun İÇİNDE kalıyor. Kendi profilinde
+"fotoğraf değiştir" rozetiyle çakışmaması için madalyon sol-üste alındı.
+
+--------------------------------------------------------------------------
+5) TEKNİK NOTLAR
+--------------------------------------------------------------------------
+• CSP sıkıdır: satır içi style/script SHA-256 ile hash'lenir.
+  index.html'de CSS veya JS'e dokunursan:
+      bash _tests/csp_hash_check.sh asra-site-fix/index.html
+  çalıştır; hash tutmazsa sayfa tarayıcıda çalışmaz (hash'ler bu pakette
+  günceldir).
+• Yeni istekler yalnızca ekran açıldığında gider (get_economy,
+  get_user_profile, admin_event_status). Boşta yoklama ritmi değişmedi.
+• Rozet portresi kamu malı (public domain) bir Atatürk fotoğrafından
+  üretildi ve sayfaya gömüldü (data: URI). Dış istek yoktur.
+• Android APK değişmedi: site WebView'de açıldığı için tema ve rozetler
+  uygulamada da görünür. Yeni APK derlemek gerekmez.
