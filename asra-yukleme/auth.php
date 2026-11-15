@@ -48,7 +48,7 @@ const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v41';
+const ASRA_BUILD = 'v42';
 // Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
 // göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
 // ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
@@ -196,18 +196,7 @@ function asraDbUser(): string
  */
 function asraDbPasswordCandidates(): array
 {
-    $list = [
-        'Asra2026db',
-        'Asra2026!db',
-        'iWkiSNmqZKaK1Zh',
-        'SDspuzgAn17CUg',
-        '5dapzugn17CUg',
-    ];
-    $fromEnv = getenv('ASRA_DB_PASSWORD');
-    if (is_string($fromEnv) && $fromEnv !== '' && !in_array($fromEnv, $list, true)) {
-        array_unshift($list, $fromEnv);
-    }
-    return $list;
+    return ['Asra2026db'];
 }
 
 function asraConnectAny(array $options = []): array
