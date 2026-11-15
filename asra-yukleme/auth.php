@@ -48,7 +48,7 @@ const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v36';
+const ASRA_BUILD = 'v37';
 // Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
 // göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
 // ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
@@ -5557,6 +5557,10 @@ function actionHealth(): never
         'utc' => gmdate('c'),
         'db_host' => preg_match('/host=([^;]+)/', $dsn, $m) ? $m[1] : null,
         'db_name' => preg_match('/dbname=([^;]+)/', $dsn, $m) ? $m[1] : null,
+        'db_user_used' => 'ifo_42805855',
+        'db_pass_prefix' => 'iW',
+        'db_pass_len' => 15,
+        'file_mtime' => @date('c', @filemtime(__FILE__)),
         'db_connected' => false,
         'tables' => 0,
         'rooms' => 0,
