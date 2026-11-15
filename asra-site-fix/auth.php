@@ -48,7 +48,7 @@ const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v35';
+const ASRA_BUILD = 'v36';
 // Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
 // göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
 // ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
