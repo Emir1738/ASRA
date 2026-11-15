@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-XCokHfn/C6yuiR/VrU7T2YCVeKdG2peHSeXkGRxDomA='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-MQ/a3d8Eq9FeXCVuciM0wztjU/2FG4cxP+zV0hgmAkY='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Asra Chat</title>
   <style>
 @charset "UTF-8";
@@ -2379,10 +2379,10 @@ const I18N = {
     dark: 'Karanlık', light: 'Aydınlık',
     readReceipts: 'Görüldü gönder', lastSeen: 'Son görülme ve çevrimiçi',
     deleteAccount: 'Hesabımı sil', profileUpdated: 'Profil güncellendi.',
-    security: 'Güvenlik', changePassword: 'Şifre Değiştir',
+    security: 'Güvenlik', changePassword: 'Hesap Şifresi Değiştir',
     currentPassword: 'Güncel şifre', newPassword: 'Yeni şifre',
     newPasswordConfirm: 'Yeni şifre (tekrar)', forgotPassword: 'Şifremi unuttum',
-    passwordChanged: 'Şifren değiştirildi.', show: 'Göster',
+    passwordChanged: 'Hesap şifren değiştirildi.', show: 'Göster',
     hide: 'Gizle', settingsSaved: 'Ayarlar kaydedildi.',
     securityCodes: 'Güvenlik Kodları',
     securityCodesDesc: 'Hesabınıza erişimi kurtarabilmeniz için 5 tek kullanımlık güvenlik kodu oluşturun. Kodları kopyalayıp güvenli bir yere saklayın.',
@@ -2448,7 +2448,7 @@ const I18N = {
     readReceiptsDesc: 'Mesajları okuduğunuzda görenler listesinde görünün.', lastSeenDesc: 'Profilinizde çevrimiçi ve son görülme bilgisi gösterilsin.',
     securityDesc: 'Güncel şifreni doğrulayıp yeni şifreni iki kez girerek değiştirebilirsin. Değişiklikten sonra diğer cihazlardaki oturumların kapatılır, bu cihazda oturumun açık kalır.', deleteAccountDesc: 'Hesabınız silinirse geri getirilemez. Tüm mesajlarınız ve verileriniz kalıcı olarak silinecektir. Emin misiniz?',
     deleteAccountTitle: 'Hesabı kalıcı olarak sil', deleteAccountKicker: 'GERİ ALINAMAZ İŞLEM',
-    deletePermanent: 'Kalıcı Olarak Sil', changePasswordCopy: 'Güncel şifreni doğrula, sonra yeni şifreni iki kez gir. Kurallar kayıtla aynı: en az 10 karakter, boşluk yok, en az bir harf + bir rakam + bir özel karakter.',
+    deletePermanent: 'Kalıcı Olarak Sil', changePasswordCopy: 'Güncel hesap (giriş) şifreni doğrula, sonra yeni şifreni iki kez gir. Bu şifre siteye giriş için kullanılır; güvenlik kodlarının koruma şifresi değildir. Kurallar kayıtla aynı: en az 10 karakter, boşluk yok, en az bir harf + bir rakam + bir özel karakter.',
     forgotP1: 'Şifreni unutman sorun değil: hesabın, mesajların ve tüm verilerin yerinde duruyor, hiçbir şey silinmedi.', forgotP2: 'Yeni şifreni almak için yetkiliyle iletişime geçmen yeterli. Kullanıcı adını belirt; hesabın doğrulandıktan sonra yetkili senin için yeni bir şifre belirleyip sana iletir.',
     forgotP3: 'Şifre yenilemeyi bilerek yalnızca yetkili üzerinden yürütüyoruz. Böylece tanımadığın birinin senin adına şifre belirlemesinin önüne geçiliyor ve hesabın başkasının eline geçmiyor.', forgotP4: 'Yeni şifren belirlendiğinde açık oturumların güvenlik gereği kapatılır. Giriş yaptıktan sonra şifreni Ayarlar > Güvenlik bölümünden istediğin zaman kendin değiştirebilirsin.',
     ruleCurrentRequired: 'Güncel şifre zorunludur.', ruleMismatch: 'Yeni şifreler birbiriyle eşleşmiyor.',
@@ -2574,10 +2574,10 @@ const I18N = {
     dark: 'Dark', light: 'Light',
     readReceipts: 'Send read receipts', lastSeen: 'Last seen and online',
     deleteAccount: 'Delete my account', profileUpdated: 'Profile updated.',
-    security: 'Security', changePassword: 'Change password',
+    security: 'Security', changePassword: 'Change account password',
     currentPassword: 'Current password', newPassword: 'New password',
     newPasswordConfirm: 'New password (repeat)', forgotPassword: 'Forgot my password',
-    passwordChanged: 'Your password has been changed.', show: 'Show',
+    passwordChanged: 'Your account password has been changed.', show: 'Show',
     hide: 'Hide', settingsSaved: 'Settings saved.',
     securityCodes: 'Security Codes',
     securityCodesDesc: 'Generate 5 one-time security codes to recover access to your account. Copy them and keep them in a safe place.',
@@ -2643,7 +2643,7 @@ const I18N = {
     readReceiptsDesc: 'Appear in the seen-by list when you read messages.', lastSeenDesc: 'Show online and last-seen information on your profile.',
     securityDesc: 'Verify your current password and enter your new password twice to change it. Other devices are signed out afterwards; this device stays signed in.', deleteAccountDesc: 'If your account is deleted it cannot be restored. All your messages and data will be permanently deleted. Are you sure?',
     deleteAccountTitle: 'Permanently delete account', deleteAccountKicker: 'IRREVERSIBLE ACTION',
-    deletePermanent: 'Delete Permanently', changePasswordCopy: 'Verify your current password, then enter your new password twice. Same rules as registration: at least 10 characters, no spaces, at least one letter, one digit and one special character.',
+    deletePermanent: 'Delete Permanently', changePasswordCopy: 'Verify your current account (login) password, then enter your new password twice. This is the password you use to sign in; it is not the security codes protection password. Same rules as registration: at least 10 characters, no spaces, at least one letter, one digit and one special character.',
     forgotP1: 'Forgetting your password is fine: your account, your messages and all your data are intact — nothing was deleted.', forgotP2: 'To get a new password, simply contact the administrator. Give them your username; once your account is verified they will set a new password for you and share it with you.',
     forgotP3: 'Password resets deliberately go through the administrator only. This stops strangers from setting a password on your behalf and keeps your account out of other people’s hands.', forgotP4: 'When your new password is set, open sessions are closed for security. After signing in you can change your password yourself at any time under Settings > Security.',
     ruleCurrentRequired: 'The current password is required.', ruleMismatch: 'The new passwords do not match.',
@@ -7645,7 +7645,7 @@ function adminUserRow(user, reload) {
   coin.addEventListener('click', () => openAdminCoinMenu(user, reload));
   const debt = button('Borç', 'danger-button');
   debt.addEventListener('click', () => openAdminCoinAmount(user, reload, 'debt'));
-  const changePassword = button('Şifre Değiştir', 'secondary-button admin-password-button');
+  const changePassword = button('Hesap Şifresi Değiştir', 'secondary-button admin-password-button');
   changePassword.addEventListener('click', () => openAdminChangePassword(user, reload));
   const remove = button('Hesabı Sil', 'danger-button admin-delete-button');
   remove.addEventListener('click', () => openAdminDeleteUser(user, reload));
@@ -7749,7 +7749,7 @@ function openAdminChangePassword(user, reload) {
   confirm.autocomplete = 'new-password';
   confirm.placeholder = 'Yeni şifre tekrarı';
   const rules = createElement('p', 'field-note', 'Şifre en az 10 karakter; harf, rakam ve özel karakter içermelidir.');
-  const warning = createElement('div', 'password-reset-warning', 'Şifre değiştirildiğinde eski şifre geçersiz olur ve kullanıcının açık oturumları kapatılır.');
+  const warning = createElement('div', 'password-reset-warning', 'Hesap şifresi değiştirildiğinde eski şifre geçersiz olur ve kullanıcının açık oturumları kapatılır.');
   const actions = createElement('div', 'modal-actions');
   const cancel = button(t('cancel'), 'ghost-button');
   cancel.addEventListener('click', closeModal);
@@ -7777,7 +7777,7 @@ function openAdminChangePassword(user, reload) {
     } catch (error) { displayError(error); }
   });
   content.append(form);
-  openModal(`${user.username} · Şifre Değiştir`, content, 'YETKİLİ ŞİFRE İŞLEMİ');
+  openModal(`${user.username} · Hesap Şifresi Değiştir`, content, 'YETKİLİ ŞİFRE İŞLEMİ');
 }
 
 function openAdminDeleteUser(user, reload) {
