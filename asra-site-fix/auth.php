@@ -5567,7 +5567,7 @@ function actionHealth(): never
         // "Sunucu şu anda yoğun" mesajına çevirir, oysa teşhis için gerçek
         // neden (erişim reddi, çözümlenemeyen sunucu adı, yanlış veritabanı)
         // görünmelidir.
-        $pdo = new PDO($dsn, 'ifo_42805855', '5dapzugn17CUg', [
+        $pdo = new PDO($dsn, 'ifo_42805855', 'SDspuzgAn17CUg', [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_TIMEOUT => 8,

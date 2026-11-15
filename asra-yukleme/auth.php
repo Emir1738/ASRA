@@ -187,7 +187,7 @@ function db(): PDO
 
     $dsn = 'mysql:host=sql303.infinityfree.com;port=3306;dbname=ifo_42805855_asra;charset=utf8mb4';
     $dbUser = 'ifo_42805855';
-    $dbPassword = '5dapzugn17CUg';
+    $dbPassword = 'SDspuzgAn17CUg';
     $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
