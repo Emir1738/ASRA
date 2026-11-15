@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-qR19CcKkEB/ppAOXFZ7z4wYn2Iuah6vMSJdDNU4doQI='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-VLJgqpQ+kVPUiBW6J8XrIlIxii/u25RQSreNoEA2qwo='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Asra Chat</title>
   <style>
 @charset "UTF-8";
@@ -2396,6 +2396,9 @@ const I18N = {
     securityCopy: 'Kopyala',
     securityCopied: 'Kopyalandı',
     securityCopyAll: 'Tümünü kopyala',
+    securityRefresh: 'Kodları Yenile', securityRefreshTitle: 'Güvenlik Kodlarını Yenile',
+    securityRefreshConfirm: 'Yeni 5 güvenlik kodu üretilecek ve eski kodlar geçersiz olacak. Devam edilsin mi?',
+    securityRefreshed: 'Güvenlik kodları yenilendi.',
     securityProtect: 'Bu bölümü korumak için bir şifre koyun',
     securityProtectPassword: 'Koruma şifresi',
     securityProtectPasswordConfirm: 'Koruma şifresi (tekrar)',
@@ -2427,7 +2430,7 @@ const I18N = {
     registerSubmit: 'Hesap Oluştur', connTitle: 'Bağlantı durumu',
     coinTitle: 'AA Coin bakiyesi', menuOpenAria: 'Menüyü aç',
     menuAria: 'Hesap menüsü', menuShop: 'Mağaza',
-    menuQuests: 'Görevler ve Oyunlar', menuRefresh: 'Yenile', menuRefreshed: 'Yenilendi.',
+    menuQuests: 'Görevler ve Oyunlar', menuRefresh: 'Yenile',
     chatSubtitle: 'Güvenli ve konu odaklı sohbet', chatRules: 'Konu dışına çıkmayın; hakaret, aşağılama ve kişisel saldırı yasaktır.',
     retentionCalculating: 'hesaplanıyor…', retentionLine: 'Duyurular dâhil {hours} saat sonra temizlenir',
     roomEmpty: 'oda boş', roomEmptyFirst: 'oda boş · ilk mesajdan sonra başlar',
@@ -2592,6 +2595,9 @@ const I18N = {
     securityCopy: 'Copy',
     securityCopied: 'Copied',
     securityCopyAll: 'Copy all',
+    securityRefresh: 'Refresh Codes', securityRefreshTitle: 'Refresh Security Codes',
+    securityRefreshConfirm: 'A new set of 5 security codes will be generated and the old codes will become invalid. Continue?',
+    securityRefreshed: 'Security codes refreshed.',
     securityProtect: 'Set a password to protect this section',
     securityProtectPassword: 'Protection password',
     securityProtectPasswordConfirm: 'Protection password (repeat)',
@@ -2623,7 +2629,7 @@ const I18N = {
     registerSubmit: 'Create Account', connTitle: 'Connection status',
     coinTitle: 'AA Coin balance', menuOpenAria: 'Open menu',
     menuAria: 'Account menu', menuShop: 'Shop',
-    menuQuests: 'Quests & Games', menuRefresh: 'Refresh', menuRefreshed: 'Refreshed.',
+    menuQuests: 'Quests & Games', menuRefresh: 'Refresh',
     chatSubtitle: 'Safe, topic-focused chat', chatRules: 'Stay on topic; insults, belittling and personal attacks are forbidden.',
     retentionCalculating: 'calculating…', retentionLine: 'Including announcements, cleared after {hours} hours',
     roomEmpty: 'room empty', roomEmptyFirst: 'room empty · starts after the first message',
@@ -7092,11 +7098,43 @@ function openSecuritySetup() {
     done.addEventListener('click', () => { closeModal(); renderSettings(); });
     actions.replaceChildren(cancel, done);
     body.append(actions);
+    const refresh = button(t('securityRefresh'), 'secondary-button');
+    refresh.dataset.noActionLock = 'true';
+    refresh.style.width = '100%';
+    refresh.addEventListener('click', () => confirmRefreshSecurityCodes(() => {
+      renderCodes();
+      openModal(t('securitySetCodes'), content, t('security'));
+    }));
+    body.append(refresh);
   }
 
   renderEmail();
   content.append(body);
   openModal(t('securitySetCodes'), content, t('security'));
+}
+
+function confirmRefreshSecurityCodes(rerender) {
+  // Güvenlik kodlarını yenile: yeni 5 kod üretilir, eski kodlar geçersiz
+  // olur. Sayfa asla yeniden yüklenmez; yalnızca kod listesi tazelenir.
+  const content = createElement('div');
+  content.append(createElement('p', 'modal-copy', t('securityRefreshConfirm')));
+  const actions = createElement('div', 'modal-actions');
+  const cancel = button(t('cancel'), 'ghost-button');
+  cancel.addEventListener('click', closeModal);
+  const go = button(t('securityRefresh'), 'primary-button');
+  go.type = 'button';
+  go.dataset.noActionLock = 'true';
+  go.addEventListener('click', () => {
+    state.securityCodes = Array.from({ length: 5 }, generateSecurityCode);
+    saveSecurityCodesState();
+    closeModal();
+    toast(t('securityRefreshed'));
+    rerender();
+  });
+  actions.append(cancel, go);
+  content.append(actions);
+  openModal(t('securityRefreshTitle'), content, t('security'));
+  window.setTimeout(() => go.focus(), 0);
 }
 
 function openSecurityView() {
@@ -7163,6 +7201,11 @@ function openSecurityView() {
     const actions = createElement('div', 'modal-actions');
     actions.append(allCopy, changeGmail, button(t('close'), 'primary-button'));
     content.append(list, actions);
+    const refresh = button(t('securityRefresh'), 'secondary-button');
+    refresh.dataset.noActionLock = 'true';
+    refresh.style.width = '100%';
+    refresh.addEventListener('click', () => confirmRefreshSecurityCodes(showCodes));
+    content.append(refresh);
     openModal(t('securityCodes'), content, t('security'));
   };
 
@@ -8141,7 +8184,7 @@ function bindStaticEvents() {
     if (action === 'quests') renderQuestHub().catch(displayError);
     if (action === 'settings') renderSettings();
     if (action === 'admin') openAdmin();
-    if (action === 'refresh') refreshInPlace();
+    if (action === 'refresh') openRefreshPrompt();
     if (action === 'logout') performLogout();
   });
   document.addEventListener('click', (event) => {
@@ -8230,23 +8273,6 @@ async function performAppRefresh() {
   } catch (_) { /* Servis çalışanı yoksa sorun değil. */ }
   // Not: eski sürümlerin kaydettiği servis işçisi burada sökülür.
   window.location.replace(buildRefreshUrl());
-}
-
-async function refreshInPlace() {
-  // Sayfa TAMAMEN yeniden yuklenmez: oturum, guvenlik kodlari ve tum yerel
-  // durum yerinde kalir. Yalnizca guncel veri cekilir (arka plan nabzi zaten
-  // otomatik tazeler; bu dugum aninda bir yakalama daha yapar).
-  if (!state.user) { toast(t('menuRefreshed')); return; }
-  state.pollBackoff = 0;
-  state.roomPollBackoff = 0;
-  state.roomPulseQuietTicks = 0;
-  refreshRoomPulse().catch(() => {});
-  if (state.route === 'room' && state.currentRoom) {
-    fetchMessages(false).catch(() => {});
-  } else if (state.route === 'home') {
-    loadRooms(false).catch(() => {});
-  }
-  toast(t('menuRefreshed'));
 }
 
 function openRefreshPrompt() {
