@@ -42,13 +42,13 @@ set_error_handler(function (int $severity, string $message, string $file, int $l
 
 // Şema sürüm anahtarı: yükseltildiğinde her veritabanı kurulumu bir kez
 // yeniden çalışır (idempotenttir) ve yeni tablo/tohumlar eklenir.
-const SCHEMA_VERSION_KEY = 'schema:runtime:v22';
+const SCHEMA_VERSION_KEY = 'schema:runtime:v23';
 const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // Sunucu sürüm işareti: /auth.php?action=health yanıtında döner. Yükleme
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v42';
+const ASRA_BUILD = 'v43';
 // Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
 // göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
 // ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
@@ -676,6 +676,29 @@ function ensureRuntimeSchema(PDO $pdo): void
             }
         }
     }
+
+    // ESKI KURULUM ONARIMI (schema v23): gecmis surumlerde users.invite_code
+    // NOT NULL DEFAULT '' + UNIQUE(uq_users_invite_code) idi; bu asili kisir
+    // her yeni kaydi 'Duplicate entry '' for key uq_users_invite_code' (1062)
+    // hatasiyla engelliyordu. Tekil anahtar dusurulur, sutun NULL'a acilir ve
+    // bos string satirlari NULL'a cevrilir. Tamamen idempotenttir.
+    $inviteCodeColumn = $pdo->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'invite_code'"
+    );
+    if ((int) $inviteCodeColumn->fetchColumn() === 0) {
+        $pdo->exec('ALTER TABLE users ADD COLUMN invite_code VARCHAR(32) NULL DEFAULT NULL');
+    } else {
+        $legacyInviteIndex = $pdo->query(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND INDEX_NAME = 'uq_users_invite_code'"
+        );
+        if ((int) $legacyInviteIndex->fetchColumn() > 0) {
+            $pdo->exec('ALTER TABLE users DROP INDEX uq_users_invite_code');
+        }
+        $pdo->exec('ALTER TABLE users MODIFY invite_code VARCHAR(32) NULL DEFAULT NULL');
+    }
+    $pdo->exec("UPDATE users SET invite_code = NULL WHERE invite_code = ''");
 
     $economyColumns = [
         'aa_coins' => "ALTER TABLE users ADD COLUMN aa_coins DECIMAL(12,1) NOT NULL DEFAULT 0.0 AFTER birthday",
