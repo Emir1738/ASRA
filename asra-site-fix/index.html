@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-/GTiu3raIyhcfu8Oacaxg+HvPym0vIwihxVzufCQzJ0='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-qR19CcKkEB/ppAOXFZ7z4wYn2Iuah6vMSJdDNU4doQI='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Asra Chat</title>
   <style>
 @charset "UTF-8";
@@ -2427,7 +2427,7 @@ const I18N = {
     registerSubmit: 'Hesap Oluştur', connTitle: 'Bağlantı durumu',
     coinTitle: 'AA Coin bakiyesi', menuOpenAria: 'Menüyü aç',
     menuAria: 'Hesap menüsü', menuShop: 'Mağaza',
-    menuQuests: 'Görevler ve Oyunlar', menuRefresh: 'Yenile',
+    menuQuests: 'Görevler ve Oyunlar', menuRefresh: 'Yenile', menuRefreshed: 'Yenilendi.',
     chatSubtitle: 'Güvenli ve konu odaklı sohbet', chatRules: 'Konu dışına çıkmayın; hakaret, aşağılama ve kişisel saldırı yasaktır.',
     retentionCalculating: 'hesaplanıyor…', retentionLine: 'Duyurular dâhil {hours} saat sonra temizlenir',
     roomEmpty: 'oda boş', roomEmptyFirst: 'oda boş · ilk mesajdan sonra başlar',
@@ -2623,7 +2623,7 @@ const I18N = {
     registerSubmit: 'Create Account', connTitle: 'Connection status',
     coinTitle: 'AA Coin balance', menuOpenAria: 'Open menu',
     menuAria: 'Account menu', menuShop: 'Shop',
-    menuQuests: 'Quests & Games', menuRefresh: 'Refresh',
+    menuQuests: 'Quests & Games', menuRefresh: 'Refresh', menuRefreshed: 'Refreshed.',
     chatSubtitle: 'Safe, topic-focused chat', chatRules: 'Stay on topic; insults, belittling and personal attacks are forbidden.',
     retentionCalculating: 'calculating…', retentionLine: 'Including announcements, cleared after {hours} hours',
     roomEmpty: 'room empty', roomEmptyFirst: 'room empty · starts after the first message',
@@ -8141,7 +8141,7 @@ function bindStaticEvents() {
     if (action === 'quests') renderQuestHub().catch(displayError);
     if (action === 'settings') renderSettings();
     if (action === 'admin') openAdmin();
-    if (action === 'refresh') openRefreshPrompt();
+    if (action === 'refresh') refreshInPlace();
     if (action === 'logout') performLogout();
   });
   document.addEventListener('click', (event) => {
@@ -8230,6 +8230,23 @@ async function performAppRefresh() {
   } catch (_) { /* Servis çalışanı yoksa sorun değil. */ }
   // Not: eski sürümlerin kaydettiği servis işçisi burada sökülür.
   window.location.replace(buildRefreshUrl());
+}
+
+async function refreshInPlace() {
+  // Sayfa TAMAMEN yeniden yuklenmez: oturum, guvenlik kodlari ve tum yerel
+  // durum yerinde kalir. Yalnizca guncel veri cekilir (arka plan nabzi zaten
+  // otomatik tazeler; bu dugum aninda bir yakalama daha yapar).
+  if (!state.user) { toast(t('menuRefreshed')); return; }
+  state.pollBackoff = 0;
+  state.roomPollBackoff = 0;
+  state.roomPulseQuietTicks = 0;
+  refreshRoomPulse().catch(() => {});
+  if (state.route === 'room' && state.currentRoom) {
+    fetchMessages(false).catch(() => {});
+  } else if (state.route === 'home') {
+    loadRooms(false).catch(() => {});
+  }
+  toast(t('menuRefreshed'));
 }
 
 function openRefreshPrompt() {
