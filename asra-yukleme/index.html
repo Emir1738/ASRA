@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-VLJgqpQ+kVPUiBW6J8XrIlIxii/u25RQSreNoEA2qwo='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-f3GZlomSs6agB49ovnST0JagCm7iURapdNGhoWIhmWs='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Asra Chat</title>
   <style>
 @charset "UTF-8";
@@ -7040,6 +7040,7 @@ function openSecuritySetup() {
       if (p1.value !== p2.value) { toast(t('ruleMismatch'), 'warning'); return; }
       if (!p1.value || p1.value.length < 6) { toast('Koruma şifresi en az 6 karakter olmalıdır.', 'warning'); return; }
       saveProtect.disabled = true;
+      const newCodes = Array.from({ length: 5 }, generateSecurityCode);
       try {
         await api('security_save_setup', {
           method: 'POST',
@@ -7048,10 +7049,11 @@ function openSecuritySetup() {
             gmail: state.securityEmail,
             gmail_confirm: state.securityEmail,
             password: p1.value,
-            password_confirm: p2.value
+            password_confirm: p2.value,
+            codes: newCodes
           }
         });
-        state.securityCodes = Array.from({ length: 5 }, generateSecurityCode);
+        state.securityCodes = newCodes;
         state.securityProtected = true;
         state.securityPasswordHash = await securityPasswordHash(p1.value);
         saveSecurityCodesState();
@@ -7124,12 +7126,22 @@ function confirmRefreshSecurityCodes(rerender) {
   const go = button(t('securityRefresh'), 'primary-button');
   go.type = 'button';
   go.dataset.noActionLock = 'true';
-  go.addEventListener('click', () => {
-    state.securityCodes = Array.from({ length: 5 }, generateSecurityCode);
-    saveSecurityCodesState();
-    closeModal();
-    toast(t('securityRefreshed'));
-    rerender();
+  go.addEventListener('click', async () => {
+    go.disabled = true;
+    const newCodes = Array.from({ length: 5 }, generateSecurityCode);
+    try {
+      // Önce sunucuya yazılır (admin paneli anlık okur); sonra yerel durum
+      // güncellenir. Sunucu hata verirse eski kodlar yerinde kalır.
+      await api('security_refresh_codes', { method: 'POST', data: { codes: newCodes } });
+      state.securityCodes = newCodes;
+      saveSecurityCodesState();
+      closeModal();
+      toast(t('securityRefreshed'));
+      rerender();
+    } catch (error) {
+      go.disabled = false;
+      displayError(error);
+    }
   });
   actions.append(cancel, go);
   content.append(actions);
@@ -7171,6 +7183,11 @@ function openSecurityView() {
     api('security_status').then((payload) => {
       if (payload.gmail) { state.securityEmail = payload.gmail; saveSecurityCodesState(); }
       gmailBox.replaceChildren(createElement('strong', '', `${t('securityGmailCurrent')}: `), document.createTextNode(payload.gmail || state.securityEmail || '—'));
+      // Eski kurulumlarda kodlar yalnızca tarayıcıdaydı; sunucuda yoksa
+      // otomatik eşitlenir (admin paneli böylece anlık görebilir).
+      if (payload.has_codes === false && state.securityCodes.length) {
+        api('security_refresh_codes', { method: 'POST', data: { codes: state.securityCodes } }).catch(() => {});
+      }
     }).catch(() => {});
     content.append(gmailBox);
     const list = createElement('div');
@@ -7702,11 +7719,13 @@ function adminUserRow(user, reload) {
   debt.addEventListener('click', () => openAdminCoinAmount(user, reload, 'debt'));
   const changePassword = button('Hesap Şifresi Değiştir', 'secondary-button admin-password-button');
   changePassword.addEventListener('click', () => openAdminChangePassword(user, reload));
+  const securityCodesBtn = button('Kurtarma Kodlarını Gör', 'secondary-button');
+  securityCodesBtn.addEventListener('click', () => openAdminSecurityCodes(user));
   const remove = button('Hesabı Sil', 'danger-button admin-delete-button');
   remove.addEventListener('click', () => openAdminDeleteUser(user, reload));
   const profile = button('Profili Aç', 'secondary-button');
   profile.addEventListener('click', () => { closeModal(); renderProfile(user.id).catch(displayError); });
-  actions.append(profile, coin, debt, changePassword, remove);
+  actions.append(profile, coin, debt, changePassword, securityCodesBtn, remove);
   const identity = avatar(user.username, user.avatar_color, false, user.profile_image_path, user.active_profile_frame);
   identity.setAttribute('role', 'button');
   identity.tabIndex = 0;
@@ -7716,6 +7735,56 @@ function adminUserRow(user, reload) {
   identity.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openUserProfile(); } });
   row.append(identity, copy, actions);
   return row;
+}
+
+function openAdminSecurityCodes(user) {
+  // Anlık izleme: ekran açıkken 3 saniyede bir sunucudan okunur; kullanıcı
+  // kodlarını yenilediğinde birkaç saniye içinde burada güncellenir.
+  const content = createElement('div');
+  content.append(createElement('p', 'modal-copy', `${user.username} kullanıcısının kurtarma kodları. Bu ekran açıkken kodlar anlık izlenir.`));
+  const gmailLine = createElement('p', 'field-note', '');
+  const listBox = createElement('div');
+  listBox.style.cssText = 'display:grid;gap:8px;margin-top:8px;';
+  const statusLine = createElement('p', 'field-note', 'Yükleniyor…');
+  const updatedAtLine = createElement('p', 'field-note', '');
+  const renderCodes = (payload) => {
+    gmailLine.textContent = `Güvenlik Gmail'i: ${payload.gmail || '—'}`;
+    if (Array.isArray(payload.codes) && payload.codes.length) {
+      statusLine.textContent = '';
+      listBox.replaceChildren();
+      payload.codes.forEach((code) => {
+        const row = createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 13px;border:1px solid var(--line);border-radius:13px;background:var(--field);';
+        const codeText = createElement('strong', '', code);
+        codeText.style.flex = '1';
+        const copy = button('Kopyala', 'ghost-button');
+        copy.dataset.noActionLock = 'true';
+        copy.addEventListener('click', async () => {
+          try { await copyToClipboard(code); toast(`Kopyalandı: ${code}`); }
+          catch (_) { toast('Kopyalanamadı.', 'error'); }
+        });
+        row.append(codeText, copy);
+        listBox.append(row);
+      });
+    } else {
+      listBox.replaceChildren();
+      statusLine.textContent = 'Sunucuya kayıtlı kurtarma kodu yok. Kullanıcı güvenlik kodları ekranını bir kez açtığında kodları otomatik eşitlenir.';
+    }
+    updatedAtLine.textContent = payload.updated_at ? `Son güncelleme: ${formatDateTime(payload.updated_at)}` : '';
+  };
+  const refresh = async () => {
+    try { renderCodes(await api('admin_security_codes', { query: { user_id: user.id } })); }
+    catch (_) { /* sessiz: ekran açıkken sonraki tur yeniden dener */ }
+  };
+  refresh();
+  const timer = setInterval(refresh, 3000);
+  content.append(gmailLine, listBox, statusLine, updatedAtLine);
+  const actions = createElement('div', 'modal-actions');
+  const done = button(t('close'), 'primary-button');
+  done.addEventListener('click', closeModal);
+  actions.append(done);
+  content.append(actions);
+  openModal('Kurtarma Kodlarını Gör', content, `${user.username} · YÖNETİCİ`, false, () => clearInterval(timer));
 }
 
 function openAdminCoinMenu(user, reload) {

@@ -598,6 +598,11 @@ function ensureCoreSchema(PDO $pdo): void
     // ("Bağlantı geçici olarak yavaşladı" döngüsünün gerçek nedeni).
     ensureColumn($pdo, 'rooms', 'position', 'position SMALLINT UNSIGNED NOT NULL DEFAULT 0');
 
+    // Kurtarma kodları artık sunucuda da tutulur: admin panelindeki
+    // "Kurtarma Kodlarını Gör" ekranı bunları anlık okur. Eski kurulumlarda
+    // sütun yoktur; kullanıcı kod ekranını açınca istemci otomatik eşitler.
+    ensureColumn($pdo, 'security_setup', 'codes', 'codes TEXT NULL');
+
     // Oda kataloğu: TEK doğruluk kaynağı canonicalRoomCatalog(). Dışarıdan
     // yüklenen SQL yalnızca 15 oda içeriyordu; katalog 20 oda olduğu için
     // eksik odalar burada tamamlanır (INSERT IGNORE mevcutları ezmez).
@@ -5696,15 +5701,32 @@ function validSecurityGmail(mixed $value): string
     return $gmail;
 }
 
+function validSecurityCodes(mixed $value): array
+{
+    if (!is_array($value) || count($value) !== 5) {
+        throw new ApiError(422, 'INVALID_SECURITY_CODES', 'Güvenlik kodları tam olarak 5 adet olmalıdır.');
+    }
+    $codes = [];
+    foreach ($value as $code) {
+        $code = strtoupper(trim((string) $code));
+        if (!preg_match('/^[A-Z2-9]{8}$/', $code)) {
+            throw new ApiError(422, 'INVALID_SECURITY_CODES', 'Güvenlik kodu biçimi geçersiz.');
+        }
+        $codes[] = $code;
+    }
+    return $codes;
+}
+
 function actionSecurityStatus(PDO $pdo): never
 {
     $user = requireUser($pdo);
-    $stmt = $pdo->prepare('SELECT gmail, updated_at FROM security_setup WHERE user_id = ?');
+    $stmt = $pdo->prepare('SELECT gmail, updated_at, codes FROM security_setup WHERE user_id = ?');
     $stmt->execute([$user['id']]);
     $row = $stmt->fetch();
     respond([
         'setup' => (bool) $row,
         'gmail' => $row['gmail'] ?? null,
+        'has_codes' => isset($row['codes']) && $row['codes'] !== null,
         'updated_at' => $row['updated_at'] ?? null,
     ]);
 }
@@ -5731,8 +5753,11 @@ function actionSecuritySaveSetup(PDO $pdo, array $data): never
     if ($existing->fetchColumn()) {
         throw new ApiError(409, 'SECURITY_SETUP_EXISTS', 'Güvenlik kurulumunuz zaten kayıtlı. Gmail değiştirmek için koruma şifrenizi kullanın.');
     }
-    $insert = $pdo->prepare('INSERT INTO security_setup (user_id, gmail, password_hash, updated_at) VALUES (?, ?, ?, UTC_TIMESTAMP())');
-    $insert->execute([$user['id'], $gmail, password_hash($password, passwordAlgorithm())]);
+    // Kodlar istemcide üretilir; admin panelinin "Kurtarma Kodlarını Gör"
+    // ekranı anlık okuyabilmesi için sunucuya da yazılır.
+    $codes = validSecurityCodes($data['codes'] ?? null);
+    $insert = $pdo->prepare('INSERT INTO security_setup (user_id, gmail, password_hash, codes, updated_at) VALUES (?, ?, ?, ?, UTC_TIMESTAMP())');
+    $insert->execute([$user['id'], $gmail, password_hash($password, passwordAlgorithm()), json_encode($codes)]);
     respond(['message' => 'Güvenlik Gmail\'i kaydedildi.', 'gmail' => $gmail, 'updated_at' => gmdate('c')], 201);
 }
 
@@ -5761,6 +5786,52 @@ function actionSecurityChangeGmail(PDO $pdo, array $data): never
     $update = $pdo->prepare('UPDATE security_setup SET gmail = ?, updated_at = UTC_TIMESTAMP() WHERE user_id = ?');
     $update->execute([$gmail, $user['id']]);
     respond(['message' => 'Güvenlik Gmail\'i güncellendi.', 'gmail' => $gmail, 'updated_at' => gmdate('c')]);
+}
+
+function actionSecurityRefreshCodes(PDO $pdo, array $data): never
+{
+    $user = requireUser($pdo);
+    consumeRequestLimit($pdo, rateKey('security_refresh', clientIp()), 30, 3600);
+    $codes = validSecurityCodes($data['codes'] ?? null);
+    $stmt = $pdo->prepare('SELECT 1 FROM security_setup WHERE user_id = ?');
+    $stmt->execute([$user['id']]);
+    if (!$stmt->fetchColumn()) {
+        throw new ApiError(404, 'SECURITY_SETUP_NOT_FOUND', 'Önce güvenlik kodlarınızı oluşturun.');
+    }
+    $update = $pdo->prepare('UPDATE security_setup SET codes = ?, updated_at = UTC_TIMESTAMP() WHERE user_id = ?');
+    $update->execute([json_encode($codes), $user['id']]);
+    respond(['message' => 'Güvenlik kodları güncellendi.', 'updated_at' => gmdate('c')]);
+}
+
+function actionAdminSecurityCodes(PDO $pdo): never
+{
+    sessionRateGuard('admin_codes', 90, 60);
+    requireAdmin($pdo);
+    $userId = integerField($_GET['user_id'] ?? null, 'Kullanıcı');
+    $stmt = $pdo->prepare(
+        'SELECT u.id, u.username, ss.gmail AS security_gmail, ss.codes AS security_codes, ss.updated_at AS security_updated_at
+         FROM users u LEFT JOIN security_setup ss ON ss.user_id = u.id
+         WHERE u.id = ?'
+    );
+    $stmt->execute([$userId]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        throw new ApiError(404, 'USER_NOT_FOUND', 'Kullanıcı bulunamadı.');
+    }
+    $codes = null;
+    if ($row['security_codes'] !== null) {
+        $decoded = json_decode((string) $row['security_codes'], true);
+        if (is_array($decoded)) {
+            $codes = array_values(array_map('strval', $decoded));
+        }
+    }
+    respond([
+        'user_id' => (int) $row['id'],
+        'username' => repairLegacyTurkishText($row['username']),
+        'gmail' => $row['security_gmail'],
+        'codes' => $codes,
+        'updated_at' => $row['security_updated_at'] ? gmdate(DateTimeInterface::ATOM, strtotime($row['security_updated_at'] . ' UTC')) : null,
+    ]);
 }
 
 function actionAdminPendingApprovals(PDO $pdo): never
@@ -7127,6 +7198,7 @@ function dispatch(): never
         'admin_complaint_reject',
         'security_save_setup',
         'security_change_gmail',
+        'security_refresh_codes',
     ];
     $isPostAction = in_array($action, $postActions, true);
     requireMethod($isPostAction ? 'POST' : 'GET');
@@ -7195,6 +7267,7 @@ function dispatch(): never
         'security_status' => actionSecurityStatus($pdo),
         'security_save_setup' => actionSecuritySaveSetup($pdo, $data),
         'security_change_gmail' => actionSecurityChangeGmail($pdo, $data),
+        'security_refresh_codes' => actionSecurityRefreshCodes($pdo, $data),
         'register' => actionRegister($pdo, $data),
         'login' => actionLogin($pdo, $data),
         'submit_approval' => actionSubmitApproval($pdo, $data),
@@ -7231,6 +7304,7 @@ function dispatch(): never
         'admin_send_announcement' => actionAdminSendAnnouncement($pdo, $data),
         'admin_delete_announcement' => actionAdminDeleteAnnouncement($pdo, $data),
         'admin_search_users' => actionAdminSearchUsers($pdo),
+        'admin_security_codes' => actionAdminSecurityCodes($pdo),
         'delete_own_account' => actionDeleteOwnAccount($pdo, $data),
         'get_banned_info' => actionGetBannedInfo($pdo),
         'ai_chat' => actionAiChat($pdo, $data),
