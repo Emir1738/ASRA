@@ -5788,6 +5788,40 @@ function actionSecurityChangeGmail(PDO $pdo, array $data): never
     respond(['message' => 'Güvenlik Gmail\'i güncellendi.', 'gmail' => $gmail, 'updated_at' => gmdate('c')]);
 }
 
+function actionSecurityViewCodes(PDO $pdo, array $data): never
+{
+    // Kurulum CİHAZA değil HESABA bağlıdır: başka bir telefondan girildiğinde
+    // de aynı kodlar görülebilmeli. Şifre sunucudaki bcrypt kopyasından
+    // doğrulanır ve güncel kodlar döndürülür.
+    $user = requireUser($pdo);
+    $key = rateKey('security_view', clientIp() . '|' . $user['id']);
+    assertNotRateLimited($pdo, $key);
+    $stmt = $pdo->prepare('SELECT gmail, password_hash, codes, updated_at FROM security_setup WHERE user_id = ?');
+    $stmt->execute([$user['id']]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        throw new ApiError(404, 'SECURITY_SETUP_NOT_FOUND', 'Önce güvenlik kodlarınızı oluşturun.');
+    }
+    $current = (string) ($data['password'] ?? '');
+    if ($current === '' || !password_verify($current, $row['password_hash'])) {
+        recordFailedAttempt($pdo, $key, 5, 900, 900);
+        throw new ApiError(401, 'WRONG_PROTECT_PASSWORD', 'Koruma şifresi hatalı. Yeni deneme 15 dakika sonra yapılabilir.', ['retry_after' => 900]);
+    }
+    clearRateLimit($pdo, $key);
+    $codes = null;
+    if ($row['codes'] !== null) {
+        $decoded = json_decode((string) $row['codes'], true);
+        if (is_array($decoded)) {
+            $codes = array_values(array_map('strval', $decoded));
+        }
+    }
+    respond([
+        'gmail' => $row['gmail'],
+        'codes' => $codes,
+        'updated_at' => $row['updated_at'] ? gmdate(DateTimeInterface::ATOM, strtotime($row['updated_at'] . ' UTC')) : null,
+    ]);
+}
+
 function actionSecurityRefreshCodes(PDO $pdo, array $data): never
 {
     $user = requireUser($pdo);
@@ -7199,6 +7233,7 @@ function dispatch(): never
         'security_save_setup',
         'security_change_gmail',
         'security_refresh_codes',
+        'security_view_codes',
     ];
     $isPostAction = in_array($action, $postActions, true);
     requireMethod($isPostAction ? 'POST' : 'GET');
@@ -7268,6 +7303,7 @@ function dispatch(): never
         'security_save_setup' => actionSecuritySaveSetup($pdo, $data),
         'security_change_gmail' => actionSecurityChangeGmail($pdo, $data),
         'security_refresh_codes' => actionSecurityRefreshCodes($pdo, $data),
+        'security_view_codes' => actionSecurityViewCodes($pdo, $data),
         'register' => actionRegister($pdo, $data),
         'login' => actionLogin($pdo, $data),
         'submit_approval' => actionSubmitApproval($pdo, $data),

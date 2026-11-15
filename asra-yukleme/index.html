@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-f3GZlomSs6agB49ovnST0JagCm7iURapdNGhoWIhmWs='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-/aJ54Za6oiGgWOK0tyw37C0UMzzXi5iZ4BLpWd0slYU='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Asra Chat</title>
   <style>
 @charset "UTF-8";
@@ -2399,6 +2399,7 @@ const I18N = {
     securityRefresh: 'Kodları Yenile', securityRefreshTitle: 'Güvenlik Kodlarını Yenile',
     securityRefreshConfirm: 'Yeni 5 güvenlik kodu üretilecek ve eski kodlar geçersiz olacak. Devam edilsin mi?',
     securityRefreshed: 'Güvenlik kodları yenilendi.',
+    securityCodesMissing: 'Kurtarma kodlarına bu cihazdan erişilemedi: kodlar sunucuya henüz eşitlenmemiş. Kodların oluşturulduğu cihazda güvenlik kodları ekranını bir kez açarsan kodlar otomatik eşitlenir.',
     securityProtect: 'Bu bölümü korumak için bir şifre koyun',
     securityProtectPassword: 'Koruma şifresi',
     securityProtectPasswordConfirm: 'Koruma şifresi (tekrar)',
@@ -2598,6 +2599,7 @@ const I18N = {
     securityRefresh: 'Refresh Codes', securityRefreshTitle: 'Refresh Security Codes',
     securityRefreshConfirm: 'A new set of 5 security codes will be generated and the old codes will become invalid. Continue?',
     securityRefreshed: 'Security codes refreshed.',
+    securityCodesMissing: 'Recovery codes could not be reached from this device: they have not been synced to the server yet. Open the security codes screen once on the device where the codes were created and they will sync automatically.',
     securityProtect: 'Set a password to protect this section',
     securityProtectPassword: 'Protection password',
     securityProtectPasswordConfirm: 'Protection password (repeat)',
@@ -6754,20 +6756,25 @@ function renderSettings() {
   );
 
   // Güvenlik kodları: 5 tek kullanımlık kurtarma kodu, iletişim için Gmail
-  // ve bölümü kilitleyen koruma şifresi. Tüm veriler istemci tarafında
-  // (localStorage) saklanır. Sitede Gmail'e kod gönderme altyapısı yok,
-  // bu yüzden yalnızca "iletişim için" ibaresi kullanılır; gerçek kod
-  // yetkiliyle paylaşılır/doğrulanır.
+  // ve bölümü kilitleyen koruma şifresi. Kurulum HESABA bağlıdır: kayıt ve
+  // kodlar sunucuda tutulur, cihazda yalnızca kopyası bulunur. Başka bir
+  // cihazdan girildiğinde koruma şifresi istenir ve kodlar sunucudan
+  // getirilir; "koy" bir daha önerilmez.
   const codesSection = createElement('section', 'panel');
   codesSection.append(
     createElement('h2', '', t('securityCodes')),
     createElement('p', 'panel-description', t('securityCodesDesc'))
   );
   const codesActions = createElement('div', 'modal-actions');
-  const manageCodesButton = button(!state.securityCodes.length ? t('securitySetCodes') : t('securityShowCodes'), 'primary-button');
+  const manageCodesButton = button(state.securityCodes.length ? t('securityShowCodes') : t('securitySetCodes'), 'primary-button');
   manageCodesButton.dataset.noActionLock = 'true';
   manageCodesButton.addEventListener('click', openSecurityCodes);
   codesActions.append(manageCodesButton);
+  // Kurulum cihaza değil hesaba bağlıdır: sunucuda kayıt varsa bu cihazda
+  // kod olmasa bile düğme "koy" değil "göster" olarak düzeltilir.
+  api('security_status').then((payload) => {
+    if (payload.setup) manageCodesButton.textContent = t('securityShowCodes');
+  }).catch(() => {});
   if (state.securityCodes.length) {
     const forgotCodesButton = button(t('securityForgotTitle'), 'ghost-button');
     forgotCodesButton.dataset.noActionLock = 'true';
@@ -6984,10 +6991,18 @@ function copyToClipboard(text) {
   });
 }
 
-function openSecurityCodes() {
+async function openSecurityCodes() {
   loadSecurityCodesState();
-  if (!state.securityCodes.length) openSecuritySetup();
-  else openSecurityView();
+  // Kurulum HESABA bağlıdır, cihaza değil: sunucuda kayıt varsa bir daha
+  // "koy" denmez; başka telefondan girilse bile koruma şifresi istenir ve
+  // kodlar sunucudan getirilir. "Koy" yalnızca hiç kurulum yapılmamışsa
+  // görünür.
+  let serverSetup = null;
+  try { serverSetup = !!(await api('security_status')).setup; } catch (_) {}
+  if (serverSetup === true) { openSecurityView(true); return; }
+  if (serverSetup === false && !state.securityCodes.length) { openSecuritySetup(); return; }
+  // Sunucuya ulaşılamadıysa ya da (eski durum) yalnızca yerel kodlar varsa:
+  openSecurityView(false);
 }
 
 function openSecuritySetup() {
@@ -7149,7 +7164,7 @@ function confirmRefreshSecurityCodes(rerender) {
   window.setTimeout(() => go.focus(), 0);
 }
 
-function openSecurityView() {
+function openSecurityView(mustAskPassword = false) {
   const askPassword = () => {
     const content = createElement('div');
     content.append(createElement('p', 'modal-copy', t('securityProtectPrompt')));
@@ -7161,9 +7176,33 @@ function openSecurityView() {
     const go = button(t('securityViewCodes'), 'primary-button');
     go.type = 'button'; go.dataset.noActionLock = 'true';
     go.addEventListener('click', async () => {
-      if (!(await securityPasswordMatches(input.value))) { toast(t('securityWrongProtect'), 'error'); return; }
-      closeModal();
-      showCodes();
+      const value = input.value;
+      if (!value) { toast(t('securityWrongProtect'), 'warning'); return; }
+      go.disabled = true;
+      try {
+        // Şifre sunucuda doğrulanır; güncel kodlar da sunucudan gelir. Böylece
+        // hangi cihazdan girilirse girilsin aynı kodlar görülür.
+        const payload = await api('security_view_codes', { method: 'POST', loading: true, data: { password: value } });
+        if (Array.isArray(payload.codes) && payload.codes.length) {
+          state.securityCodes = payload.codes;
+        }
+        if (payload.gmail) state.securityEmail = payload.gmail;
+        state.securityProtected = true;
+        state.securityPasswordHash = await securityPasswordHash(value);
+        saveSecurityCodesState();
+        closeModal();
+        showCodes();
+      } catch (error) {
+        go.disabled = false;
+        if (error && error.code === 'WRONG_PROTECT_PASSWORD') { toast(t('securityWrongProtect'), 'error'); return; }
+        // Ağ kesintisinde yedek: yerel kopya varsa eski yöntemle doğrulanır.
+        if (error && (error.code === 'NETWORK_ERROR' || error.code === 'REQUEST_TIMEOUT')) {
+          if (await securityPasswordMatches(value)) { closeModal(); showCodes(); return; }
+          toast(t('securityWrongProtect'), 'error');
+          return;
+        }
+        displayError(error);
+      }
     });
     const forgot = button(t('securityForgotTitle'), 'ghost-button');
     forgot.dataset.noActionLock = 'true';
@@ -7206,6 +7245,9 @@ function openSecurityView() {
       row.append(codeText, copy);
       list.append(row);
     });
+    if (!state.securityCodes.length) {
+      list.append(createElement('p', 'field-note', t('securityCodesMissing')));
+    }
     const allCopy = button(t('securityCopyAll'), 'secondary-button');
     allCopy.dataset.noActionLock = 'true';
     allCopy.addEventListener('click', async () => {
@@ -7226,7 +7268,7 @@ function openSecurityView() {
     openModal(t('securityCodes'), content, t('security'));
   };
 
-  if (state.securityProtected) askPassword();
+  if (mustAskPassword || state.securityProtected) askPassword();
   else showCodes();
 }
 
