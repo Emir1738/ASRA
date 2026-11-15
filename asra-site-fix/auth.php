@@ -48,7 +48,7 @@ const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v43';
+const ASRA_BUILD = 'v44';
 // Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
 // göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
 // ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
@@ -3619,7 +3619,7 @@ function actionSession(PDO $pdo): never
 
 function actionRegister(PDO $pdo, array $data): never
 {
-    consumeRequestLimit($pdo, rateKey('register', clientIp()), 5, 3600);
+    consumeRequestLimit($pdo, rateKey('register', clientIp()), 30, 3600);
     assertDeviceAvailableForRegistration($pdo);
     $username = validatedUsername($data['username'] ?? null);
     $block = activeApprovalBlock($pdo, $username);

@@ -88,6 +88,10 @@ ServerSignature Off
 # ---------------------------------------------------------------------------
 <IfModule mod_rewrite.c>
   RewriteEngine On
+  # HTTP istekleri daima HTTPS'e yonlendirilir ("not secure" damgasi onlenir;
+  # guvenli cerezler http uzerinde tutulmadigi icin giris/kayit da boylece calisir)
+  RewriteCond %{HTTPS} !=on
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
   # Klasör kökü dışında doğrudan dizin erişimini engelle
   RewriteRule (^|/)\.(?!well-known/)[a-zA-Z0-9_.]+$ - [F,L]
 </IfModule>
