@@ -185,14 +185,9 @@ function db(): PDO
         return $pdo;
     }
 
-    // GitHub kaynak kopyası: üretim bilgisi yok. Dağıtımdan önce
-    // ASRA_DB_DSN / ASRA_DB_USER / ASRA_DB_PASSWORD ortamda tanımlanmalı.
-    $dsn = envValue(
-        'ASRA_DB_DSN',
-        ''
-    );
-    $dbUser = envValue('ASRA_DB_USER', '');
-    $dbPassword = envValue('ASRA_DB_PASSWORD', '');
+    $dsn = 'mysql:host=sql303.infinityfree.com;port=3306;dbname=ifo_42805855_asra;charset=utf8mb4';
+    $dbUser = 'ifo_42805855';
+    $dbPassword = '5dapzugn17CUg';
     $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -5554,10 +5549,7 @@ function formatUtc(?string $value): ?string
  */
 function actionHealth(): never
 {
-    $dsn = envValue(
-        'ASRA_DB_DSN',
-        ''
-    );
+    $dsn = 'mysql:host=sql303.infinityfree.com;port=3306;dbname=ifo_42805855_asra;charset=utf8mb4';
     $report = [
         'ok' => true,
         'build' => ASRA_BUILD,
@@ -5575,7 +5567,7 @@ function actionHealth(): never
         // "Sunucu şu anda yoğun" mesajına çevirir, oysa teşhis için gerçek
         // neden (erişim reddi, çözümlenemeyen sunucu adı, yanlış veritabanı)
         // görünmelidir.
-        $pdo = new PDO($dsn, envValue('ASRA_DB_USER', ''), envValue('ASRA_DB_PASSWORD', ''), [
+        $pdo = new PDO($dsn, 'ifo_42805855', '5dapzugn17CUg', [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_TIMEOUT => 8,
