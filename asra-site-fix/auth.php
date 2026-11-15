@@ -48,7 +48,7 @@ const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v37';
+const ASRA_BUILD = 'v38';
 // Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
 // göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
 // ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
@@ -187,7 +187,7 @@ function db(): PDO
 
     $dsn = 'mysql:host=sql303.infinityfree.com;port=3306;dbname=ifo_42805855_asra;charset=utf8mb4';
     $dbUser = 'ifo_42805855';
-    $dbPassword = 'iWkiSNmqZKaK1Zh';
+    $dbPassword = 'Asra2026!db';
     $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -5558,8 +5558,8 @@ function actionHealth(): never
         'db_host' => preg_match('/host=([^;]+)/', $dsn, $m) ? $m[1] : null,
         'db_name' => preg_match('/dbname=([^;]+)/', $dsn, $m) ? $m[1] : null,
         'db_user_used' => 'ifo_42805855',
-        'db_pass_prefix' => 'iW',
-        'db_pass_len' => 15,
+        'db_pass_prefix' => 'As',
+        'db_pass_len' => 11,
         'file_mtime' => @date('c', @filemtime(__FILE__)),
         'db_connected' => false,
         'tables' => 0,
@@ -5571,7 +5571,7 @@ function actionHealth(): never
         // "Sunucu şu anda yoğun" mesajına çevirir, oysa teşhis için gerçek
         // neden (erişim reddi, çözümlenemeyen sunucu adı, yanlış veritabanı)
         // görünmelidir.
-        $pdo = new PDO($dsn, 'ifo_42805855', 'iWkiSNmqZKaK1Zh', [
+        $pdo = new PDO($dsn, 'ifo_42805855', 'Asra2026!db', [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_TIMEOUT => 8,
