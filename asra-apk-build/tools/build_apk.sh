@@ -69,7 +69,7 @@ done
 PREVIOUS_APK="$ROOT/asra-1.7.3.apk"
 [[ -f "$PREVIOUS_APK" ]] || PREVIOUS_APK="$ROOT/asra-1.7.2.apk"
 [[ -f "$PREVIOUS_APK" ]] || PREVIOUS_APK="$ROOT/asra-1.7.1.apk"
-EXPECTED_CERT='3527c22176f863d0846d328c86c90adce00605e5a6155d1f18398fcaf3e916c0'
+EXPECTED_CERT='e71bcc6eb7dc72516f0d12114e1c865207cd9eccfa217a7dca06cab4f53880cc'
 NEW_SIGN=$(printf '%s\n' "$SIGNATURE" | grep 'certificate SHA-256 digest:' | head -1 | awk '{print $NF}')
 [[ "$NEW_SIGN" == "$EXPECTED_CERT" ]] || { echo "Beklenen guncelleme sertifikasi degisti" >&2; exit 1; }
 if [[ -f "$PREVIOUS_APK" ]]; then
