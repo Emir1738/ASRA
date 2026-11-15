@@ -48,7 +48,7 @@ const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v39';
+const ASRA_BUILD = 'v40';
 // Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
 // göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
 // ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
@@ -178,6 +178,65 @@ function isTransientDbError(Throwable $error): bool
     return false;
 }
 
+function asraDbDsn(): string
+{
+    return 'mysql:host=sql303.infinityfree.com;port=3306;dbname=ifo_42805855_asra;charset=utf8mb4';
+}
+
+function asraDbUser(): string
+{
+    return 'ifo_42805855';
+}
+
+/**
+ * InfinityFree panelinde parola değişikliği MySQL sunucusuna gecikmeli
+ * yansıyabildiği için bilinen adaylar sırayla denenir. Boylece tek bir
+ * dosya yuklemek yeterli olur; hangi parola gecerliyse sunucu kendisi bulur.
+ * Parola metni hicbir zaman ciktiya yazilmaz, yalnizca sira numarasi doner.
+ */
+function asraDbPasswordCandidates(): array
+{
+    $list = [
+        'Asra2026db',
+        'Asra2026!db',
+        'iWkiSNmqZKaK1Zh',
+        'SDspuzgAn17CUg',
+        '5dapzugn17CUg',
+    ];
+    $fromEnv = getenv('ASRA_DB_PASSWORD');
+    if (is_string($fromEnv) && $fromEnv !== '' && !in_array($fromEnv, $list, true)) {
+        array_unshift($list, $fromEnv);
+    }
+    return $list;
+}
+
+function asraConnectAny(array $options = []): array
+{
+    $base = $options ?: [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+        PDO::ATTR_STRINGIFY_FETCHES => false,
+        PDO::ATTR_TIMEOUT => 6,
+    ];
+    $result = ['pdo' => null, 'index' => null, 'count' => 0, 'errors' => []];
+    foreach (asraDbPasswordCandidates() as $i => $candidate) {
+        $result['count']++;
+        try {
+            $result['pdo'] = new PDO(asraDbDsn(), asraDbUser(), $candidate, $base);
+            $result['index'] = $i;
+            break;
+        } catch (PDOException $error) {
+            $result['errors'][] = [
+                'index' => $i,
+                'sqlstate' => (string) $error->getCode(),
+                'driver_code' => $error->errorInfo[1] ?? null,
+            ];
+        }
+    }
+    return $result;
+}
+
 function db(): PDO
 {
     static $pdo = null;
@@ -185,21 +244,16 @@ function db(): PDO
         return $pdo;
     }
 
-    $dsn = 'mysql:host=sql303.infinityfree.com;port=3306;dbname=ifo_42805855_asra;charset=utf8mb4';
-    $dbUser = 'ifo_42805855';
-    $dbPassword = 'Asra2026db';
-    $options = [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES => false,
-        PDO::ATTR_STRINGIFY_FETCHES => false,
-        PDO::ATTR_TIMEOUT => 6,
-    ];
-
     $lastError = null;
     for ($attempt = 1; $attempt <= 3; $attempt++) {
+        $conn = asraConnectAny();
+        $pdo = $conn['pdo'];
+        if (!($pdo instanceof PDO)) {
+            $lastError = new PDOException('Tum veritabani parola adaylari reddedildi.');
+            usleep($attempt * 250000);
+            continue;
+        }
         try {
-            $pdo = new PDO($dsn, $dbUser, $dbPassword, $options);
             $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
             $pdo->exec("SET time_zone = '+00:00'");
             $pdo->exec('SET SESSION innodb_lock_wait_timeout = 3');
@@ -5549,7 +5603,7 @@ function formatUtc(?string $value): ?string
  */
 function actionHealth(): never
 {
-    $dsn = 'mysql:host=sql303.infinityfree.com;port=3306;dbname=ifo_42805855_asra;charset=utf8mb4';
+    $dsn = asraDbDsn();
     $report = [
         'ok' => true,
         'build' => ASRA_BUILD,
@@ -5557,33 +5611,49 @@ function actionHealth(): never
         'utc' => gmdate('c'),
         'db_host' => preg_match('/host=([^;]+)/', $dsn, $m) ? $m[1] : null,
         'db_name' => preg_match('/dbname=([^;]+)/', $dsn, $m) ? $m[1] : null,
-        'db_user_used' => 'ifo_42805855',
-        'db_pass_prefix' => 'As',
-        'db_pass_len' => 10,
+        'db_user_used' => asraDbUser(),
         'file_mtime' => @date('c', @filemtime(__FILE__)),
+        'pdo_drivers' => PDO::getAvailableDrivers(),
         'db_connected' => false,
+        'db_probe_matched' => null,
+        'db_probe_count' => 0,
+        'db_probe_errors' => [],
         'tables' => 0,
         'rooms' => 0,
         'schema_stamps' => [],
     ];
     try {
-        // db() yerine DOĞRUDAN bağlantı denenir: db() geçici hataları
-        // "Sunucu şu anda yoğun" mesajına çevirir, oysa teşhis için gerçek
-        // neden (erişim reddi, çözümlenemeyen sunucu adı, yanlış veritabanı)
-        // görünmelidir.
-        $pdo = new PDO($dsn, 'ifo_42805855', 'Asra2026db', [
+        // db() yerine dogrudan baglanti: teshis icin gercek hata gorunmeli.
+        // Aday parolalar sirayla denenir; ilk baglanan raporlanir.
+        $conn = asraConnectAny([
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_TIMEOUT => 8,
         ]);
-        $report['db_connected'] = true;
-        $report['tables'] = (int) $pdo->query(
-            'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()'
-        )->fetchColumn();
-        $report['rooms'] = (int) $pdo->query('SELECT COUNT(*) FROM rooms')->fetchColumn();
-        $stamps = $pdo->prepare("SELECT rate_key FROM rate_limits WHERE rate_key LIKE 'schema:%' ORDER BY rate_key");
-        $stamps->execute();
-        $report['schema_stamps'] = $stamps->fetchAll(PDO::FETCH_COLUMN);
+        $report['db_probe_count'] = $conn['count'];
+        $report['db_probe_errors'] = $conn['errors'];
+        if ($conn['pdo'] instanceof PDO) {
+            $pdo = $conn['pdo'];
+            $report['db_connected'] = true;
+            $report['db_probe_matched'] = $conn['index'];
+            try {
+                $report['mysql_current_user'] = (string) $pdo->query('SELECT CURRENT_USER()')->fetchColumn();
+                $report['tables'] = (int) $pdo->query(
+                    'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()'
+                )->fetchColumn();
+            } catch (Throwable $ignored) {}
+            try {
+                $report['rooms'] = (int) $pdo->query('SELECT COUNT(*) FROM rooms')->fetchColumn();
+            } catch (Throwable $ignored) {}
+            try {
+                $stamps = $pdo->prepare("SELECT rate_key FROM rate_limits WHERE rate_key LIKE 'schema:%' ORDER BY rate_key");
+                $stamps->execute();
+                $report['schema_stamps'] = $stamps->fetchAll(PDO::FETCH_COLUMN);
+            } catch (Throwable $ignored) {}
+        } else {
+            $report['ok'] = false;
+            $report['db_error'] = 'Hicbir parola adayi kabul edilmedi. Paneldeki MySQL parolasi bu sunucuya yansimamis.';
+        }
     } catch (Throwable $error) {
         $report['ok'] = false;
         $report['db_error'] = $error->getMessage();
