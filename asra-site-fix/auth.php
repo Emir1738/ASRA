@@ -48,7 +48,7 @@ const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v40';
+const ASRA_BUILD = 'v41';
 // Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
 // göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
 // ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
@@ -180,12 +180,12 @@ function isTransientDbError(Throwable $error): bool
 
 function asraDbDsn(): string
 {
-    return 'mysql:host=sql303.infinityfree.com;port=3306;dbname=ifo_42805855_asra;charset=utf8mb4';
+    return 'mysql:host=sql303.infinityfree.com;port=3306;dbname=if0_42805855_asra;charset=utf8mb4';
 }
 
 function asraDbUser(): string
 {
-    return 'ifo_42805855';
+    return 'if0_42805855';
 }
 
 /**
