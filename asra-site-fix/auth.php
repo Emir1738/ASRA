@@ -48,7 +48,7 @@ const DEFAULT_ADMIN_PASSWORD = 'AsraAsraJshe+sbuwnduxmsgdnfusmg';
 // sonrasında DOĞRU dosyanın gerçekten sunucuda olduğunu buradan doğrulanır;
 // istemci de bekleyenler listesinin yeni sorguyu kullanıp kullanmadığını
 // bundan bağımsız olarak includes_unsubmitted alanıyla anlar.
-const ASRA_BUILD = 'v44';
+const ASRA_BUILD = 'v45';
 // Bilgi Odası (içerik odası) sabit oda kimliği: oda listesinde id sırasına
 // göre EN ÜSTTE durur; normal mesajlaşma kabul etmez. İçerik (haber/kaynak/
 // ders/çalışma kağıdı/form) ayrı tablolarda yaşar.
@@ -572,6 +572,13 @@ function ensureCoreSchema(PDO $pdo): void
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (rate_key),
   KEY idx_rate_limits_updated (updated_at)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;',
+        'CREATE TABLE IF NOT EXISTS security_setup (
+  user_id BIGINT UNSIGNED NOT NULL,
+  gmail VARCHAR(320) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY (user_id)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;'
     ];
     foreach ($statements as $sql) {
@@ -4329,8 +4336,10 @@ function actionAdminSearchUsers(PDO $pdo): never
     // Onay bekleyenler yönetim ekranında görünmez; yalnızca onaylı hesaplar listelenir
     $stmt = $pdo->prepare(
         "SELECT u.id, u.username, u.approval_status, u.avatar_color, u.profile_image_path, u.active_profile_frame, u.aa_coins, u.coin_debt_due_at, u.created_at,
-                b.reason AS ban_reason, b.banned_until, b.banned_at
+                b.reason AS ban_reason, b.banned_until, b.banned_at,
+                ss.gmail AS security_gmail, ss.updated_at AS security_gmail_updated_at
          FROM users u LEFT JOIN banned_users b ON b.user_id = u.id
+         LEFT JOIN security_setup ss ON ss.user_id = u.id
          WHERE u.approval_status = 'approved' AND u.username LIKE ? ESCAPE '\\\\' ORDER BY u.username LIMIT 100"
     );
     $stmt->execute([$pattern]);
@@ -5671,6 +5680,87 @@ function actionHealth(): never
         $report['db_error'] = $error->getMessage();
     }
     respond($report, $report['ok'] ? 200 : 503);
+}
+
+/**
+ * Guvenlik Kodlari kurulumu: kullanicinin iletisim Gmail'i ve koruma sifresi
+ * sunucuda tutulur; yonetici panelinde Gmail gorunur, Gmail degisikligi
+ * yalnizca koruma sifresini dogru bilene aciktir.
+ */
+function validSecurityGmail(mixed $value): string
+{
+    $gmail = strtolower(trim((string) $value));
+    if ($gmail === '' || strlen($gmail) > 320 || !filter_var($gmail, FILTER_VALIDATE_EMAIL) || !str_ends_with($gmail, '@gmail.com')) {
+        throw new ApiError(422, 'INVALID_GMAIL', 'Güvenlik e-postası yalnızca geçerli bir @gmail.com adresi olabilir.');
+    }
+    return $gmail;
+}
+
+function actionSecurityStatus(PDO $pdo): never
+{
+    $user = requireUser($pdo);
+    $stmt = $pdo->prepare('SELECT gmail, updated_at FROM security_setup WHERE user_id = ?');
+    $stmt->execute([$user['id']]);
+    $row = $stmt->fetch();
+    respond([
+        'setup' => (bool) $row,
+        'gmail' => $row['gmail'] ?? null,
+        'updated_at' => $row['updated_at'] ?? null,
+    ]);
+}
+
+function actionSecuritySaveSetup(PDO $pdo, array $data): never
+{
+    $user = requireUser($pdo);
+    consumeRequestLimit($pdo, rateKey('security_setup', clientIp()), 10, 3600);
+    $gmail = validSecurityGmail($data['gmail'] ?? null);
+    $confirm = strtolower(trim((string) ($data['gmail_confirm'] ?? '')));
+    if ($confirm === '' || $confirm !== $gmail) {
+        throw new ApiError(422, 'GMAIL_MISMATCH', 'Girdiğiniz Gmail adresleri birbiriyle eşleşmiyor.');
+    }
+    $password = (string) ($data['password'] ?? '');
+    $passwordConfirm = (string) ($data['password_confirm'] ?? '');
+    if ($password === '' || strlen($password) < 6) {
+        throw new ApiError(422, 'INVALID_PROTECT_PASSWORD', 'Koruma şifresi en az 6 karakter olmalıdır.');
+    }
+    if ($password !== $passwordConfirm) {
+        throw new ApiError(422, 'PROTECT_PASSWORD_MISMATCH', 'Koruma şifreleri birbiriyle eşleşmiyor.');
+    }
+    $existing = $pdo->prepare('SELECT 1 FROM security_setup WHERE user_id = ?');
+    $existing->execute([$user['id']]);
+    if ($existing->fetchColumn()) {
+        throw new ApiError(409, 'SECURITY_SETUP_EXISTS', 'Güvenlik kurulumunuz zaten kayıtlı. Gmail değiştirmek için koruma şifrenizi kullanın.');
+    }
+    $insert = $pdo->prepare('INSERT INTO security_setup (user_id, gmail, password_hash, updated_at) VALUES (?, ?, ?, UTC_TIMESTAMP())');
+    $insert->execute([$user['id'], $gmail, password_hash($password, passwordAlgorithm())]);
+    respond(['message' => 'Güvenlik Gmail\'i kaydedildi.', 'gmail' => $gmail, 'updated_at' => gmdate('c')], 201);
+}
+
+function actionSecurityChangeGmail(PDO $pdo, array $data): never
+{
+    $user = requireUser($pdo);
+    $key = rateKey('security_gmail', clientIp() . '|' . $user['id']);
+    assertNotRateLimited($pdo, $key);
+    $stmt = $pdo->prepare('SELECT gmail, password_hash FROM security_setup WHERE user_id = ?');
+    $stmt->execute([$user['id']]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        throw new ApiError(404, 'SECURITY_SETUP_NOT_FOUND', 'Önce güvenlik kodlarınızı oluşturun.');
+    }
+    $current = (string) ($data['current_password'] ?? '');
+    if ($current === '' || !password_verify($current, $row['password_hash'])) {
+        recordFailedAttempt($pdo, $key, 5, 900, 900);
+        throw new ApiError(401, 'WRONG_PROTECT_PASSWORD', 'Koruma şifresi hatalı. Yeni deneme 15 dakika sonra yapılabilir.', ['retry_after' => 900]);
+    }
+    clearRateLimit($pdo, $key);
+    $gmail = validSecurityGmail($data['gmail'] ?? null);
+    $confirm = strtolower(trim((string) ($data['gmail_confirm'] ?? '')));
+    if ($confirm === '' || $confirm !== $gmail) {
+        throw new ApiError(422, 'GMAIL_MISMATCH', 'Girdiğiniz Gmail adresleri birbiriyle eşleşmiyor.');
+    }
+    $update = $pdo->prepare('UPDATE security_setup SET gmail = ?, updated_at = UTC_TIMESTAMP() WHERE user_id = ?');
+    $update->execute([$gmail, $user['id']]);
+    respond(['message' => 'Güvenlik Gmail\'i güncellendi.', 'gmail' => $gmail, 'updated_at' => gmdate('c')]);
 }
 
 function actionAdminPendingApprovals(PDO $pdo): never
@@ -7035,6 +7125,8 @@ function dispatch(): never
         'admin_info_article_create', 'admin_info_article_update', 'admin_info_article_delete',
         'admin_event_settings',
         'admin_complaint_reject',
+        'security_save_setup',
+        'security_change_gmail',
     ];
     $isPostAction = in_array($action, $postActions, true);
     requireMethod($isPostAction ? 'POST' : 'GET');
@@ -7100,6 +7192,9 @@ function dispatch(): never
 
     match ($action) {
         'session' => actionSession($pdo),
+        'security_status' => actionSecurityStatus($pdo),
+        'security_save_setup' => actionSecuritySaveSetup($pdo, $data),
+        'security_change_gmail' => actionSecurityChangeGmail($pdo, $data),
         'register' => actionRegister($pdo, $data),
         'login' => actionLogin($pdo, $data),
         'submit_approval' => actionSubmitApproval($pdo, $data),
