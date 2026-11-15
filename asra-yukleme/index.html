@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-MQ/a3d8Eq9FeXCVuciM0wztjU/2FG4cxP+zV0hgmAkY='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'sha256-f47FemOrhJQSvXYl5Gjl5+1zbkkAA1yn3Cx7kfUyQ3w='; script-src 'self' 'sha256-cAreJk8qFi75nuHgN/0jjUYfXeab8737lEn94hgTlPY='; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Asra Chat</title>
   <style>
 @charset "UTF-8";
@@ -2391,6 +2391,7 @@ const I18N = {
     securityEmailLabel: 'Çalışan Gmail adresiniz (iletişim için)',
     securityEmailNote: 'Eğer güvenlik kodlarını unutursanız veya herhangi bir şey olursa bu Gmail, sizin olduğunuzu kanıtlamanız içindir. Çalışan bir Gmail girin.',
     securityGenerate: 'Güvenlik kodlarını oluştur',
+    securityOk: 'Tamam',
     securityCodesGenerated: '5 güvenlik kodu oluşturuldu ve kaydedildi.',
     securityCopy: 'Kopyala',
     securityCopied: 'Kopyalandı',
@@ -2402,8 +2403,8 @@ const I18N = {
     securityViewCodes: 'Güvenlik kodlarına bak',
     securityProtectPrompt: 'Koruma şifrenizi girin',
     securityWrongProtect: 'Koruma şifresi hatalı.',
-    securityForgotTitle: 'Güvenlik kodlarımı ve şifremi unuttum',
-    securityForgotNote: 'Yetkili ile iletişime geçin; kimliğiniz Gmail adresinizle doğrulandıktan sonra yardımcı olacaktır.',
+    securityForgotTitle: 'Şifremi unuttum / Güvenlik kodum',
+    securityForgotNote: 'Yetkili ile iletişime geçin; Gmail üzerinden sizin olduğunuzu doğrulamasını isteyin ya da önceden not aldığınız bir güvenlik kodu varsa onu iletin.',
     securityCodesNote: 'Hepsini kopyalayıp güvenli bir yere saklayabilirsiniz.',
     securityGmailConfirmLabel: 'Gmail adresinizi tekrar yazın (doğrulama)',
     securityGmailMismatch: 'Girdiğiniz Gmail adresleri birbiriyle eşleşmiyor.',
@@ -2586,6 +2587,7 @@ const I18N = {
     securityEmailLabel: 'Your working Gmail address (for contact)',
     securityEmailNote: 'If you forget your security codes or anything happens, this Gmail is used to prove it is you. Enter a working Gmail.',
     securityGenerate: 'Generate security codes',
+    securityOk: 'OK',
     securityCodesGenerated: '5 security codes generated and saved.',
     securityCopy: 'Copy',
     securityCopied: 'Copied',
@@ -2597,8 +2599,8 @@ const I18N = {
     securityViewCodes: 'View security codes',
     securityProtectPrompt: 'Enter your protection password',
     securityWrongProtect: 'Wrong protection password.',
-    securityForgotTitle: 'I forgot my security codes and password',
-    securityForgotNote: 'Contact the administrator; after your identity is verified with your Gmail address, they will help you.',
+    securityForgotTitle: 'Forgot password / Security code',
+    securityForgotNote: 'Contact the administrator; ask them to verify it is you via Gmail, or share a security code you noted down earlier.',
     securityCodesNote: 'You can copy all of them and keep them in a safe place.',
     securityGmailConfirmLabel: 'Type your Gmail again (confirmation)',
     securityGmailMismatch: 'The Gmail addresses you entered do not match.',
@@ -7005,18 +7007,57 @@ function openSecuritySetup() {
     confirmInput.type = 'email'; confirmInput.name = 'security_email_confirm'; confirmInput.required = true;
     confirmInput.placeholder = 'fefef@gmail.com'; confirmInput.autocomplete = 'off';
     const note = createElement('p', 'field-note', t('securityEmailNote'));
-    next.textContent = t('securityGenerate');
+    input.value = state.securityEmail || '';
+    next.textContent = t('securityOk');
     next.onclick = () => {
       const email = String(input.value || '').trim().toLowerCase();
       const emailConfirm = String(confirmInput.value || '').trim().toLowerCase();
       if (!email || !email.includes('@') || !email.includes('.') || !email.endsWith('@gmail.com')) { toast('Lütfen geçerli bir Gmail adresi girin.', 'warning'); return; }
       if (emailConfirm !== email) { toast(t('securityGmailMismatch'), 'warning'); return; }
       state.securityEmail = email;
-      state.securityCodes = Array.from({ length: 5 }, generateSecurityCode);
       saveSecurityCodesState();
-      renderCodes();
+      renderPassword();
     };
     body.append(label, input, confirmLabel, confirmInput, note, actions);
+  }
+
+  function renderPassword() {
+    body.replaceChildren();
+    body.append(createElement('p', 'modal-copy', t('securityProtect')));
+    const p1 = document.createElement('input');
+    p1.type = 'password'; p1.required = true; p1.maxLength = 128; p1.placeholder = t('securityProtectPassword');
+    const p2 = document.createElement('input');
+    p2.type = 'password'; p2.required = true; p2.maxLength = 128; p2.placeholder = t('securityProtectPasswordConfirm');
+    const saveProtect = button(t('securitySetProtect'), 'primary-button');
+    saveProtect.type = 'button'; saveProtect.dataset.noActionLock = 'true';
+    saveProtect.addEventListener('click', async () => {
+      if (p1.value !== p2.value) { toast(t('ruleMismatch'), 'warning'); return; }
+      if (!p1.value || p1.value.length < 6) { toast('Koruma şifresi en az 6 karakter olmalıdır.', 'warning'); return; }
+      saveProtect.disabled = true;
+      try {
+        await api('security_save_setup', {
+          method: 'POST',
+          loading: true,
+          data: {
+            gmail: state.securityEmail,
+            gmail_confirm: state.securityEmail,
+            password: p1.value,
+            password_confirm: p2.value
+          }
+        });
+        state.securityCodes = Array.from({ length: 5 }, generateSecurityCode);
+        state.securityProtected = true;
+        state.securityPasswordHash = await securityPasswordHash(p1.value);
+        saveSecurityCodesState();
+        toast(t('securityCodesGenerated'));
+        renderCodes();
+      } catch (error) {
+        saveProtect.disabled = false;
+        displayError(error);
+      }
+    });
+    actions.replaceChildren(cancel, saveProtect);
+    body.append(p1, p2, actions);
   }
 
   function renderCodes() {
@@ -7046,41 +7087,11 @@ function openSecuritySetup() {
       catch (_) { toast('Kopyalanamadı.', 'error'); }
     });
     body.append(allCopy);
-    const prot = createElement('p', 'modal-copy', t('securityProtect'));
-    const p1 = document.createElement('input');
-    p1.type = 'password'; p1.required = true; p1.maxLength = 128; p1.placeholder = t('securityProtectPassword');
-    const p2 = document.createElement('input');
-    p2.type = 'password'; p2.required = true; p2.maxLength = 128; p2.placeholder = t('securityProtectPasswordConfirm');
-    const saveProtect = button(t('securitySetProtect'), 'primary-button');
-    saveProtect.type = 'button'; saveProtect.dataset.noActionLock = 'true';
-    saveProtect.addEventListener('click', async () => {
-      if (p1.value !== p2.value) { toast(t('ruleMismatch'), 'warning'); return; }
-      if (!p1.value || p1.value.length < 6) { toast('Koruma şifresi en az 6 karakter olmalıdır.', 'warning'); return; }
-      saveProtect.disabled = true;
-      try {
-        await api('security_save_setup', {
-          method: 'POST',
-          loading: true,
-          data: {
-            gmail: state.securityEmail,
-            gmail_confirm: state.securityEmail,
-            password: p1.value,
-            password_confirm: p2.value
-          }
-        });
-        state.securityProtected = true;
-        state.securityPasswordHash = await securityPasswordHash(p1.value);
-        saveSecurityCodesState();
-        closeModal();
-        toast(t('securityCodesGenerated'));
-        renderSettings();
-      } catch (error) {
-        saveProtect.disabled = false;
-        displayError(error);
-      }
-    });
-    actions.replaceChildren(cancel, saveProtect);
-    body.append(prot, p1, p2, actions);
+    const done = button(t('close'), 'primary-button');
+    done.dataset.noActionLock = 'true';
+    done.addEventListener('click', () => { closeModal(); renderSettings(); });
+    actions.replaceChildren(cancel, done);
+    body.append(actions);
   }
 
   renderEmail();
@@ -7104,8 +7115,12 @@ function openSecurityView() {
       closeModal();
       showCodes();
     });
+    const forgot = button(t('securityForgotTitle'), 'ghost-button');
+    forgot.dataset.noActionLock = 'true';
+    forgot.style.width = '100%';
+    forgot.addEventListener('click', () => { closeModal(); openSecurityForgotCodes(); });
     actions.append(cancel, go);
-    content.append(input, actions);
+    content.append(input, actions, forgot);
     openModal(t('securityViewCodes'), content, t('security'));
   };
 
@@ -7142,14 +7157,11 @@ function openSecurityView() {
       try { await copyToClipboard(state.securityCodes.join('\n')); toast(t('securityCodesNote')); }
       catch (_) { toast('Kopyalanamadı.', 'error'); }
     });
-    const forgot = button(t('securityForgotTitle'), 'ghost-button');
-    forgot.dataset.noActionLock = 'true';
-    forgot.addEventListener('click', () => { closeModal(); openSecurityForgotCodes(); });
     const changeGmail = button(t('securityChangeGmail'), 'secondary-button');
     changeGmail.dataset.noActionLock = 'true';
     changeGmail.addEventListener('click', () => { closeModal(); openSecurityChangeGmail(); });
     const actions = createElement('div', 'modal-actions');
-    actions.append(allCopy, changeGmail, forgot, button(t('close'), 'primary-button'));
+    actions.append(allCopy, changeGmail, button(t('close'), 'primary-button'));
     content.append(list, actions);
     openModal(t('securityCodes'), content, t('security'));
   };
