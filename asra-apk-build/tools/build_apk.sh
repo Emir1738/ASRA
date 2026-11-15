@@ -65,8 +65,9 @@ for scheme in 2 3; do
 done
 
 # Önceki APK'nın üzerine kurulabilir olmalı: aynı sertifika ve daha büyük kod.
-# Dağıtımdan kaldırılan sürüm yoksa korunmuş 1.7.1 orijinaliyle karşılaştır.
-PREVIOUS_APK="$ROOT/asra-1.7.2.apk"
+# Mevcut dağıtım 1.7.3'dür; bunu üst sürümle karşılaştır.
+PREVIOUS_APK="$ROOT/asra-1.7.3.apk"
+[[ -f "$PREVIOUS_APK" ]] || PREVIOUS_APK="$ROOT/asra-1.7.2.apk"
 [[ -f "$PREVIOUS_APK" ]] || PREVIOUS_APK="$ROOT/asra-1.7.1.apk"
 EXPECTED_CERT='3527c22176f863d0846d328c86c90adce00605e5a6155d1f18398fcaf3e916c0'
 NEW_SIGN=$(printf '%s\n' "$SIGNATURE" | grep 'certificate SHA-256 digest:' | head -1 | awk '{print $NF}')
@@ -82,8 +83,8 @@ printf '%s\n' "$BADGE" | sed -n '1,6p'
 PACKAGE=$(printf '%s\n' "$BADGE" | sed -nE "s/^package: name='([^']+)'.*/\1/p" | head -1)
 VERSION_NAME=$(printf '%s\n' "$BADGE" | sed -nE "s/^package:.*versionName='([^']+)'.*/\1/p" | head -1)
 VERSION_CODE=$(printf '%s\n' "$BADGE" | sed -nE "s/^package:.*versionCode='([0-9]+)'.*/\1/p" | head -1)
-[[ "$PACKAGE" == 'app.asra.client' && "$VERSION_NAME" == '1.7.3' && "$VERSION_CODE" == 30 ]] || {
-  echo "Paket kimligi/surum 1.7.3 (30) olmali" >&2; exit 1;
+[[ "$PACKAGE" == 'app.asra.client' && "$VERSION_NAME" == '1.7.4' && "$VERSION_CODE" == 31 ]] || {
+  echo "Paket kimligi/surum 1.7.4 (31) olmali" >&2; exit 1;
 }
 if [[ -f "$PREVIOUS_APK" ]]; then
   OLD_CODE=$("$BT/aapt2" dump badging "$PREVIOUS_APK" | sed -nE "s/^package:.*versionCode='([0-9]+)'.*/\1/p" | head -1)
